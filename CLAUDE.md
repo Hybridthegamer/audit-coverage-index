@@ -37,9 +37,10 @@ Edit the schema, generate, then apply — never hand-edit generated SQL.
       (done, commit `0bb2a3c`)
 - [x] 2. bam83 foundation: tokens CSS, fonts, grain canvas, custom cursor,
       scroll-reveal observer, typography kitchen-sink page (done, commit `a09bc34`)
-- [ ] 3. Public catalog: `/`, `/index`, `/protocols/[slug]`, ISR, OG images,
-      robots.txt, custom domain  ← NEXT
-- [ ] 4. Auth, middleware, `/workspace` queue + target detail
+- [~] 3. Public catalog: `/`, `/index`, `/protocols/[slug]`, ISR, OG images,
+      robots.txt (done). Custom domain is the only piece left — buy it, point
+      it at the deploy, then set `NEXT_PUBLIC_SITE_URL`; no code change needed.
+- [ ] 4. Auth, middleware, `/workspace` queue + target detail  ← NEXT
 - [ ] 5. Ingest modules, findings editor, disclosure timeline
 
 ## Locked constraints from step 1
@@ -59,6 +60,36 @@ Edit the schema, generate, then apply — never hand-edit generated SQL.
   Git ancestry arrives as the `isAncestorOfDeployed` boolean on each
   `CandidateAudit`, resolved by the ingest worker and passed in. Never compute
   ancestry inside the function.
+
+## Locked constraints from step 3
+
+- **`/index` is served by a rewrite, not a route.** App Router cannot host a
+  route literally named `/index`: Next's `denormalizePagePath` maps that path
+  back to `/`, and the build dies with `Cannot read properties of undefined
+  (reading 'entryCSSFiles')`. The page lives at `app/coverage/` and
+  `next.config.ts` rewrites `/index` → `/coverage`. The public URL stays
+  `/index` (canonical tag, sitemap, every internal link); `/coverage` is
+  internal and is disallowed in robots.txt. Do not "fix" this by renaming the
+  folder to `index`.
+- **`db/queries/public.ts` is the security boundary.** Every public route reads
+  through it and nothing else; no route imports `db/client` or `db/schema`
+  directly. It imports exactly five tables — protocols, deployments, audits,
+  audit_deployments, upgrade_events. Adding an import there is a security
+  change, not a refactor.
+- **Unpublishing is delayed, not immediate.** Public pages are ISR-cached
+  (`revalidate = 3600`), so `is_published = false` takes effect at the next
+  revalidation or rebuild. Step 5's ingest must call `revalidatePath()` on
+  write if visibility changes need to land immediately.
+- **OG images run on the edge runtime.** `@vercel/og`'s Node build crashes on
+  Windows (`path.join` mangles a `file:///C:/...` URL, so `fileURLToPath`
+  throws). Edge also means they render on demand rather than at build.
+- **OG fonts come from Google Fonts as TTF.** Satori parses TTF/OTF/WOFF but
+  not WOFF2, and the format is content-negotiated from the User-Agent on the
+  *font-file* request. `lib/og.ts` asks as Android 2.2 to get TTF, validates
+  the magic bytes, and falls back to the bundled default face on any failure.
+  A modern UA yields WOFF2 and an MSIE 6 UA yields EOT — both crash Satori.
+- **Site origin lives only in `lib/site.ts`**, read from `NEXT_PUBLIC_SITE_URL`
+  (falling back to `VERCEL_PROJECT_PRODUCTION_URL`, then localhost).
 
 ## Hard constraints
 

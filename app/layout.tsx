@@ -4,6 +4,7 @@ import { Instrument_Serif, DM_Mono } from "next/font/google";
 import "./globals.css";
 import { GrainOverlay } from "@/components/GrainOverlay";
 import { CustomCursor } from "@/components/CustomCursor";
+import { SITE_NAME, SITE_TAGLINE, SITE_URL } from "@/lib/site";
 
 /**
  * Fonts self-host via next/font (no render-blocking CDN <link>, CSP-friendly
@@ -27,9 +28,34 @@ const mono = DM_Mono({
   variable: "--font-bam-mono",
 });
 
+/**
+ * `metadataBase` is what lets every route declare `alternates.canonical` and
+ * `opengraph-image` as relative paths — Next resolves them against this origin.
+ * It comes from lib/site.ts, so pointing the site at the custom domain is an
+ * env change rather than an edit here.
+ */
 export const metadata: Metadata = {
-  title: "Audit Coverage Index",
-  description: "Coverage measurement for deployed DeFi protocol code.",
+  metadataBase: SITE_URL,
+  title: {
+    default: SITE_NAME,
+    template: `%s · ${SITE_NAME}`,
+  },
+  description: SITE_TAGLINE,
+  applicationName: SITE_NAME,
+  openGraph: {
+    type: "website",
+    siteName: SITE_NAME,
+    locale: "en_US",
+    url: "/",
+    title: SITE_NAME,
+    description: SITE_TAGLINE,
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: SITE_NAME,
+    description: SITE_TAGLINE,
+  },
+  robots: { index: true, follow: true },
 };
 
 export const viewport: Viewport = {

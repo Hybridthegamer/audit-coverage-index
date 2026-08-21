@@ -548,6 +548,9 @@ body:not(.is-touch) *::after {
   display:         flex;
   flex-direction:  column;
   justify-content: flex-end;
+  /* Content is bottom-aligned, so on a short viewport it grows upward until the
+     eyebrow sits flush against the nav's bottom border. This keeps a gap. */
+  padding-top:     var(--bam-space-xl);
   padding-bottom:  var(--bam-space-3xl);
 }
 
@@ -571,13 +574,39 @@ body:not(.is-touch) *::after {
 
 .bam-table {
   width:           100%;
-  border-collapse: collapse;
+  border-collapse: separate;
+  border-spacing:  0;
   font-family:     var(--bam-font-mono);
 }
 
+/* Horizontal scroll wrapper for the dense table on narrow viewports.
+   ────────────────────────────────────────────────────────────────────────────
+   READ BEFORE TOUCHING `position: sticky` BELOW.
+
+   `overflow-x: auto` makes this element a scroll container (the other axis
+   computes to `auto` too). A sticky descendant then resolves its offset
+   against THIS box rather than the viewport — so a `thead th` with `top: 52px`
+   renders 52px down from the wrapper, i.e. ~34px below its own <tr>, landing
+   exactly on the first tbody row and covering it with the header's opaque
+   background and z-index: 2.
+
+   Because the index sorts most-severe-first, the row that silently disappeared
+   was always the red `uncovered` one — the single most important row on the
+   site. It was present and visible in the DOM the whole time; it was painted
+   over. Verified in-browser, not theorised.
+
+   The fix: sticky is enabled only at widths where the table fits without a
+   scroll container, and there the wrapper drops back to `overflow-x: visible`
+   so the viewport is once again the sticky containing block. Below that, the
+   header is static and the table scrolls sideways — the right trade on a phone.
+   ──────────────────────────────────────────────────────────────────────────── */
+.bam-table-scroll {
+  overflow-x: auto;
+}
+
 .bam-table thead th {
-  position:       sticky;
-  top:            52px;                 /* clears the sticky nav */
+  /* position/top are set below — sticky only where there is no scroll
+     container. z-index stays so the header covers rows once it IS sticky. */
   z-index:        2;
   text-align:     left;
   font-size:      var(--bam-t-col);
@@ -589,6 +618,18 @@ body:not(.is-touch) *::after {
   padding:        0.5rem 1rem;
   border-bottom:  1px solid var(--bam-border);
   white-space:    nowrap;
+}
+
+/* Sticky header only where the wrapper is NOT a scroll container (see the
+   .bam-table-scroll note above). Below this width the header stays static and
+   the table scrolls sideways instead. */
+@media (min-width: 1200px) {
+  .bam-table-scroll { overflow-x: visible; }
+
+  .bam-table thead th {
+    position: sticky;
+    top:      52px;   /* clears the sticky nav; keep in sync with .bam-nav */
+  }
 }
 
 .bam-table td {

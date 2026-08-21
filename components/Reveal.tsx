@@ -41,13 +41,30 @@ export function Reveal({ children, delay = 0, className, style }: RevealProps) {
     }
 
     let timer = 0;
+
+    const show = () => {
+      el.style.animation = "bam-fadeUp 0.7s ease-out forwards";
+    };
+
+    /**
+     * Failsafe. Hiding content behind an observer means any reason the callback
+     * does not arrive leaves the page permanently blank — and that is not
+     * hypothetical: an over-eager grain loop once starved the main thread badly
+     * enough that no reveal ever fired and the whole site rendered empty.
+     * Other routes to the same outcome are a tall element that never reaches
+     * the threshold, or a fast scroll past it before hydration registers the
+     * observer. So content reveals on intersection OR after this deadline,
+     * whichever comes first. Worst case the animation plays unseen; the page is
+     * never invisible.
+     */
+    const failsafe = window.setTimeout(show, 1600 + delay);
+
     const observer = new IntersectionObserver(
       (entries) => {
         for (const entry of entries) {
           if (!entry.isIntersecting) continue;
-          timer = window.setTimeout(() => {
-            el.style.animation = "bam-fadeUp 0.7s ease-out forwards";
-          }, delay);
+          window.clearTimeout(failsafe);
+          timer = window.setTimeout(show, delay);
           observer.unobserve(el);
         }
       },
@@ -57,6 +74,7 @@ export function Reveal({ children, delay = 0, className, style }: RevealProps) {
     observer.observe(el);
     return () => {
       window.clearTimeout(timer);
+      window.clearTimeout(failsafe);
       observer.disconnect();
     };
   }, [delay]);

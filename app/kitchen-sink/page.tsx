@@ -150,7 +150,7 @@ export default function KitchenSink() {
           </p>
 
           <Reveal>
-            <div style={{ overflowX: "auto" }}>
+            <div className="bam-table-scroll">
               <table className="bam-table">
                 <thead>
                   <tr>
