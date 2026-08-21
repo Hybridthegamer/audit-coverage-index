@@ -1,0 +1,1152 @@
+{
+  "id": "1e0c4f84-ef91-4d65-8d72-07a4536bcd82",
+  "prevId": "00000000-0000-0000-0000-000000000000",
+  "version": "7",
+  "dialect": "postgresql",
+  "tables": {
+    "public.audit_deployments": {
+      "name": "audit_deployments",
+      "schema": "",
+      "columns": {
+        "audit_id": {
+          "name": "audit_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "deployment_id": {
+          "name": "deployment_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "audit_deployments_audit_id_audits_id_fk": {
+          "name": "audit_deployments_audit_id_audits_id_fk",
+          "tableFrom": "audit_deployments",
+          "tableTo": "audits",
+          "columnsFrom": [
+            "audit_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "audit_deployments_deployment_id_deployments_id_fk": {
+          "name": "audit_deployments_deployment_id_deployments_id_fk",
+          "tableFrom": "audit_deployments",
+          "tableTo": "deployments",
+          "columnsFrom": [
+            "deployment_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {
+        "audit_deployments_audit_id_deployment_id_pk": {
+          "name": "audit_deployments_audit_id_deployment_id_pk",
+          "columns": [
+            "audit_id",
+            "deployment_id"
+          ]
+        }
+      },
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.audits": {
+      "name": "audits",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "integer",
+          "primaryKey": true,
+          "notNull": true,
+          "identity": {
+            "type": "always",
+            "name": "audits_id_seq",
+            "schema": "public",
+            "increment": "1",
+            "startWith": "1",
+            "minValue": "1",
+            "maxValue": "2147483647",
+            "cache": "1",
+            "cycle": false
+          }
+        },
+        "protocol_id": {
+          "name": "protocol_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "auditor": {
+          "name": "auditor",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "report_url": {
+          "name": "report_url",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "report_date": {
+          "name": "report_date",
+          "type": "date",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "reviewed_commit": {
+          "name": "reviewed_commit",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "scope_note": {
+          "name": "scope_note",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "source": {
+          "name": "source",
+          "type": "audit_source",
+          "typeSchema": "public",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'protocol_docs'"
+        },
+        "verified_by_me": {
+          "name": "verified_by_me",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "audits_protocol_id_protocols_id_fk": {
+          "name": "audits_protocol_id_protocols_id_fk",
+          "tableFrom": "audits",
+          "tableTo": "protocols",
+          "columnsFrom": [
+            "protocol_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.deployments": {
+      "name": "deployments",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "integer",
+          "primaryKey": true,
+          "notNull": true,
+          "identity": {
+            "type": "always",
+            "name": "deployments_id_seq",
+            "schema": "public",
+            "increment": "1",
+            "startWith": "1",
+            "minValue": "1",
+            "maxValue": "2147483647",
+            "cache": "1",
+            "cycle": false
+          }
+        },
+        "protocol_id": {
+          "name": "protocol_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "chain": {
+          "name": "chain",
+          "type": "chain",
+          "typeSchema": "public",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "address_or_program_id": {
+          "name": "address_or_program_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "label": {
+          "name": "label",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "tvl_usd": {
+          "name": "tvl_usd",
+          "type": "numeric(30, 2)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "is_upgradeable": {
+          "name": "is_upgradeable",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        },
+        "upgrade_authority": {
+          "name": "upgrade_authority",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "deployed_at": {
+          "name": "deployed_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "last_upgraded_at": {
+          "name": "last_upgraded_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "deployed_commit": {
+          "name": "deployed_commit",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "source_verified": {
+          "name": "source_verified",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        },
+        "explorer_url": {
+          "name": "explorer_url",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "drift_score": {
+          "name": "drift_score",
+          "type": "numeric(20, 4)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "drift_days": {
+          "name": "drift_days",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "coverage_state": {
+          "name": "coverage_state",
+          "type": "coverage_state",
+          "typeSchema": "public",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'unknown'"
+        },
+        "last_checked_at": {
+          "name": "last_checked_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "deployments_protocol_id_protocols_id_fk": {
+          "name": "deployments_protocol_id_protocols_id_fk",
+          "tableFrom": "deployments",
+          "tableTo": "protocols",
+          "columnsFrom": [
+            "protocol_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.disclosure_events": {
+      "name": "disclosure_events",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "integer",
+          "primaryKey": true,
+          "notNull": true,
+          "identity": {
+            "type": "always",
+            "name": "disclosure_events_id_seq",
+            "schema": "public",
+            "increment": "1",
+            "startWith": "1",
+            "minValue": "1",
+            "maxValue": "2147483647",
+            "cache": "1",
+            "cycle": false
+          }
+        },
+        "finding_id": {
+          "name": "finding_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "event_type": {
+          "name": "event_type",
+          "type": "disclosure_event_type",
+          "typeSchema": "public",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "occurred_at": {
+          "name": "occurred_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "channel": {
+          "name": "channel",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "note": {
+          "name": "note",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "disclosure_events_finding_id_findings_id_fk": {
+          "name": "disclosure_events_finding_id_findings_id_fk",
+          "tableFrom": "disclosure_events",
+          "tableTo": "findings",
+          "columnsFrom": [
+            "finding_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.findings": {
+      "name": "findings",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "integer",
+          "primaryKey": true,
+          "notNull": true,
+          "identity": {
+            "type": "always",
+            "name": "findings_id_seq",
+            "schema": "public",
+            "increment": "1",
+            "startWith": "1",
+            "minValue": "1",
+            "maxValue": "2147483647",
+            "cache": "1",
+            "cycle": false
+          }
+        },
+        "deployment_id": {
+          "name": "deployment_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "title": {
+          "name": "title",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "severity": {
+          "name": "severity",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "immunefi_class": {
+          "name": "immunefi_class",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "funds_at_risk_usd": {
+          "name": "funds_at_risk_usd",
+          "type": "numeric(20, 2)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "status": {
+          "name": "status",
+          "type": "finding_status",
+          "typeSchema": "public",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'draft'"
+        },
+        "summary": {
+          "name": "summary",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "root_cause": {
+          "name": "root_cause",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "attack_path": {
+          "name": "attack_path",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "preconditions": {
+          "name": "preconditions",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "impact": {
+          "name": "impact",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "recommended_fix": {
+          "name": "recommended_fix",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "poc_ref": {
+          "name": "poc_ref",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "in_post_audit_code": {
+          "name": "in_post_audit_code",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "findings_deployment_id_deployments_id_fk": {
+          "name": "findings_deployment_id_deployments_id_fk",
+          "tableFrom": "findings",
+          "tableTo": "deployments",
+          "columnsFrom": [
+            "deployment_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.leads": {
+      "name": "leads",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "integer",
+          "primaryKey": true,
+          "notNull": true,
+          "identity": {
+            "type": "always",
+            "name": "leads_id_seq",
+            "schema": "public",
+            "increment": "1",
+            "startWith": "1",
+            "minValue": "1",
+            "maxValue": "2147483647",
+            "cache": "1",
+            "cycle": false
+          }
+        },
+        "protocol_id": {
+          "name": "protocol_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "source": {
+          "name": "source",
+          "type": "lead_source",
+          "typeSchema": "public",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "contact_name": {
+          "name": "contact_name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "contact_email": {
+          "name": "contact_email",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "contact_handle": {
+          "name": "contact_handle",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "status": {
+          "name": "status",
+          "type": "lead_status",
+          "typeSchema": "public",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'new'"
+        },
+        "engagement_value_usd": {
+          "name": "engagement_value_usd",
+          "type": "numeric(20, 2)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "notes": {
+          "name": "notes",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "leads_protocol_id_protocols_id_fk": {
+          "name": "leads_protocol_id_protocols_id_fk",
+          "tableFrom": "leads",
+          "tableTo": "protocols",
+          "columnsFrom": [
+            "protocol_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "set null",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.outreach_events": {
+      "name": "outreach_events",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "integer",
+          "primaryKey": true,
+          "notNull": true,
+          "identity": {
+            "type": "always",
+            "name": "outreach_events_id_seq",
+            "schema": "public",
+            "increment": "1",
+            "startWith": "1",
+            "minValue": "1",
+            "maxValue": "2147483647",
+            "cache": "1",
+            "cycle": false
+          }
+        },
+        "lead_id": {
+          "name": "lead_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "event_type": {
+          "name": "event_type",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "occurred_at": {
+          "name": "occurred_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "channel": {
+          "name": "channel",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "note": {
+          "name": "note",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "outreach_events_lead_id_leads_id_fk": {
+          "name": "outreach_events_lead_id_leads_id_fk",
+          "tableFrom": "outreach_events",
+          "tableTo": "leads",
+          "columnsFrom": [
+            "lead_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.protocols": {
+      "name": "protocols",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "integer",
+          "primaryKey": true,
+          "notNull": true,
+          "identity": {
+            "type": "always",
+            "name": "protocols_id_seq",
+            "schema": "public",
+            "increment": "1",
+            "startWith": "1",
+            "minValue": "1",
+            "maxValue": "2147483647",
+            "cache": "1",
+            "cycle": false
+          }
+        },
+        "name": {
+          "name": "name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "slug": {
+          "name": "slug",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "website": {
+          "name": "website",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "defillama_id": {
+          "name": "defillama_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "github_repo": {
+          "name": "github_repo",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "twitter": {
+          "name": "twitter",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "security_contact": {
+          "name": "security_contact",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "has_bounty": {
+          "name": "has_bounty",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        },
+        "bounty_platform": {
+          "name": "bounty_platform",
+          "type": "bounty_platform",
+          "typeSchema": "public",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'none'"
+        },
+        "bounty_url": {
+          "name": "bounty_url",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "public_note": {
+          "name": "public_note",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "is_published": {
+          "name": "is_published",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        },
+        "archived": {
+          "name": "archived",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "protocols_slug_unique": {
+          "name": "protocols_slug_unique",
+          "nullsNotDistinct": false,
+          "columns": [
+            "slug"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.queue_items": {
+      "name": "queue_items",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "integer",
+          "primaryKey": true,
+          "notNull": true,
+          "identity": {
+            "type": "always",
+            "name": "queue_items_id_seq",
+            "schema": "public",
+            "increment": "1",
+            "startWith": "1",
+            "minValue": "1",
+            "maxValue": "2147483647",
+            "cache": "1",
+            "cycle": false
+          }
+        },
+        "deployment_id": {
+          "name": "deployment_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "status": {
+          "name": "status",
+          "type": "queue_status",
+          "typeSchema": "public",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'candidate'"
+        },
+        "priority": {
+          "name": "priority",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "queued_at": {
+          "name": "queued_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "started_at": {
+          "name": "started_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "closed_at": {
+          "name": "closed_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "clear_reason": {
+          "name": "clear_reason",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "research_log": {
+          "name": "research_log",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "queue_items_deployment_id_deployments_id_fk": {
+          "name": "queue_items_deployment_id_deployments_id_fk",
+          "tableFrom": "queue_items",
+          "tableTo": "deployments",
+          "columnsFrom": [
+            "deployment_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "queue_items_clear_reason_required": {
+          "name": "queue_items_clear_reason_required",
+          "value": "\"queue_items\".\"status\" <> 'cleared' OR \"queue_items\".\"clear_reason\" IS NOT NULL"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.upgrade_events": {
+      "name": "upgrade_events",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "integer",
+          "primaryKey": true,
+          "notNull": true,
+          "identity": {
+            "type": "always",
+            "name": "upgrade_events_id_seq",
+            "schema": "public",
+            "increment": "1",
+            "startWith": "1",
+            "minValue": "1",
+            "maxValue": "2147483647",
+            "cache": "1",
+            "cycle": false
+          }
+        },
+        "deployment_id": {
+          "name": "deployment_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "occurred_at": {
+          "name": "occurred_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "tx_hash": {
+          "name": "tx_hash",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "new_implementation": {
+          "name": "new_implementation",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "block_number": {
+          "name": "block_number",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": false
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "upgrade_events_deployment_id_deployments_id_fk": {
+          "name": "upgrade_events_deployment_id_deployments_id_fk",
+          "tableFrom": "upgrade_events",
+          "tableTo": "deployments",
+          "columnsFrom": [
+            "deployment_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    }
+  },
+  "enums": {
+    "public.audit_source": {
+      "name": "audit_source",
+      "schema": "public",
+      "values": [
+        "protocol_docs",
+        "auditor_site",
+        "github",
+        "submitted"
+      ]
+    },
+    "public.bounty_platform": {
+      "name": "bounty_platform",
+      "schema": "public",
+      "values": [
+        "immunefi",
+        "intigriti",
+        "cantina",
+        "sherlock",
+        "self",
+        "none"
+      ]
+    },
+    "public.chain": {
+      "name": "chain",
+      "schema": "public",
+      "values": [
+        "ethereum",
+        "arbitrum",
+        "base",
+        "optimism",
+        "bsc",
+        "polygon",
+        "solana",
+        "stacks",
+        "aptos",
+        "sui",
+        "osmosis",
+        "neutron",
+        "injective",
+        "sei",
+        "starknet",
+        "ton"
+      ]
+    },
+    "public.coverage_state": {
+      "name": "coverage_state",
+      "schema": "public",
+      "values": [
+        "current",
+        "drifted",
+        "uncovered",
+        "unknown"
+      ]
+    },
+    "public.disclosure_event_type": {
+      "name": "disclosure_event_type",
+      "schema": "public",
+      "values": [
+        "initial_contact",
+        "follow_up",
+        "reply_received",
+        "report_sent",
+        "ack",
+        "fix_deployed",
+        "payout",
+        "escalated_seal911",
+        "published"
+      ]
+    },
+    "public.finding_status": {
+      "name": "finding_status",
+      "schema": "public",
+      "values": [
+        "draft",
+        "contact_sent",
+        "acknowledged",
+        "triaged",
+        "accepted",
+        "fixed",
+        "disputed",
+        "duplicate",
+        "no_response"
+      ]
+    },
+    "public.lead_source": {
+      "name": "lead_source",
+      "schema": "public",
+      "values": [
+        "inbound_form",
+        "outbound",
+        "referral"
+      ]
+    },
+    "public.lead_status": {
+      "name": "lead_status",
+      "schema": "public",
+      "values": [
+        "new",
+        "contacted",
+        "replied",
+        "scoping",
+        "proposal_sent",
+        "won",
+        "lost",
+        "cold"
+      ]
+    },
+    "public.queue_status": {
+      "name": "queue_status",
+      "schema": "public",
+      "values": [
+        "candidate",
+        "queued",
+        "in_review",
+        "cleared",
+        "finding_found",
+        "dropped"
+      ]
+    }
+  },
+  "schemas": {},
+  "sequences": {},
+  "roles": {},
+  "policies": {},
+  "views": {},
+  "_meta": {
+    "columns": {},
+    "schemas": {},
+    "tables": {}
+  }
+}

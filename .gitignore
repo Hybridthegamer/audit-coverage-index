@@ -1,0 +1,26 @@
+# dependencies
+/node_modules
+
+# next
+/.next/
+/out/
+next-env.d.ts
+
+# production
+/build
+
+# env
+.env
+.env.local
+.env*.local
+
+# vitest / coverage
+/coverage
+
+# os
+.DS_Store
+Thumbs.db
+
+# logs
+*.log
+npm-debug.log*
