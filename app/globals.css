@@ -1,0 +1,652 @@
+/* ═══════════════════════════════════════════════════════════════════════════
+   bam83-editorial — design system foundation (build step 2)
+
+   One token file, two surfaces:
+     · default                → the full cinematic editorial treatment
+     · [data-surface="dense"] → a quieter, scannable high-density variant for
+       the 200+ row coverage index and (later) the private workspace queue.
+
+   The dense surface changes only the type scale, motion, and the state
+   encoding. Everything the skill Laws pin — #0D0D0D ground, cream text, the
+   reserved red, border-radius:0, the Serif/Mono duality, grain on every page —
+   is shared and untouched across both.
+
+   Fonts arrive as CSS vars from next/font (see app/layout.tsx):
+     --font-bam-serif -> Instrument Serif    --font-bam-mono -> DM Mono
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+/* ─── Tokens ─────────────────────────────────────────────────────────────── */
+
+:root {
+  /* Backgrounds */
+  --bam-bg:          #0D0D0D;
+  --bam-surface:     #111111;
+  --bam-surface-2:   #161616;
+  --bam-overlay:     rgba(13, 13, 13, 0.72);
+
+  /* Cream text system — warm off-white, NEVER pure white */
+  --bam-cream:       #F0EBE1;
+  --bam-cream-80:    rgba(240, 235, 225, 0.80);
+  --bam-cream-60:    rgba(240, 235, 225, 0.60);
+  --bam-cream-40:    rgba(240, 235, 225, 0.40);
+  --bam-cream-20:    rgba(240, 235, 225, 0.20);
+  --bam-cream-08:    rgba(240, 235, 225, 0.08);
+  --bam-cream-03:    rgba(240, 235, 225, 0.03);
+  --bam-border:      rgba(240, 235, 225, 0.10);
+
+  /* Accent — reserved. In the index it marks exactly one thing: a deployment
+     that drifted from every audit (coverage_state = "uncovered"). */
+  --bam-red:         #C8003C;
+  --bam-red-dark:    #98002E;
+  --bam-red-glow:    rgba(200, 0, 60, 0.15);
+  --bam-red-subtle:  rgba(200, 0, 60, 0.08);
+
+  /* Typography — families resolve to next/font vars, with system fallbacks. */
+  --bam-font-serif:  var(--font-bam-serif), Georgia, serif;
+  --bam-font-mono:   var(--font-bam-mono), "Fira Mono", ui-monospace, monospace;
+
+  /* Editorial type scale — fluid via clamp() */
+  --bam-t-display:   clamp(4rem,   12vw,  9rem);
+  --bam-t-headline:  clamp(2.5rem,  7vw,  5.5rem);
+  --bam-t-title:     clamp(1.5rem,  4vw,  2.5rem);
+  --bam-t-body-lg:   clamp(1.1rem,  2.5vw, 1.4rem);
+  --bam-t-body:      1rem;
+  --bam-t-label:     0.75rem;
+  --bam-t-micro:     0.625rem;
+
+  /* Dense / index type scale — mono-first, tabular, compressed */
+  --bam-t-cell:      0.8125rem;   /* table cell body                    */
+  --bam-t-col:       0.625rem;    /* column header (= micro)            */
+  --bam-row-h:       2.5rem;      /* row height                         */
+  --bam-dense-track: 0.02em;      /* cell tracking (< editorial 0.05em) */
+
+  /* Spacing */
+  --bam-space-xs:    0.25rem;
+  --bam-space-sm:    0.5rem;
+  --bam-space-md:    1rem;
+  --bam-space-lg:    1.5rem;
+  --bam-space-xl:    2.5rem;
+  --bam-space-2xl:   4rem;
+  --bam-space-3xl:   7rem;
+  --bam-pad:         clamp(1.5rem, 5vw, 5rem);
+}
+
+/* ─── Base reset + root ──────────────────────────────────────────────────── */
+
+* {
+  box-sizing: border-box;
+  margin:     0;
+  padding:    0;
+}
+
+html {
+  background: var(--bam-bg);   /* kill the white flash before body paints */
+}
+
+.bam-root {
+  background:               var(--bam-bg);
+  color:                    var(--bam-cream);
+  font-family:              var(--bam-font-mono);
+  font-size:                var(--bam-t-body);
+  line-height:              1.5;
+  -webkit-font-smoothing:   antialiased;
+  -moz-osx-font-smoothing:  grayscale;
+  min-height:               100vh;
+}
+
+/* ─── Ambient effects ────────────────────────────────────────────────────── */
+
+.bam-grain {
+  position:       fixed;
+  inset:          0;
+  width:          100%;
+  height:         100%;
+  pointer-events: none;
+  z-index:        9999;
+  opacity:        0.055;
+}
+
+/* Custom cursor — desktop only; .is-touch is set on <body> for coarse pointers */
+body:not(.is-touch) *,
+body:not(.is-touch) *::before,
+body:not(.is-touch) *::after {
+  cursor: none !important;
+}
+
+#bam-cursor {
+  position:       fixed;
+  top:            0;
+  left:           0;
+  width:          8px;
+  height:         8px;
+  border-radius:  50%;                    /* circle — an allowed radius */
+  background:     var(--bam-cream);
+  pointer-events: none;
+  z-index:        99999;
+  transform:      translate(-50%, -50%);
+  mix-blend-mode: difference;             /* always visible on any ground */
+  transition:     transform 0.18s cubic-bezier(0.34, 1.2, 0.64, 1),
+                  opacity 0.2s ease;
+}
+
+#bam-cursor.hovered  { transform: translate(-50%, -50%) scale(2.2); }
+#bam-cursor.on-input { transform: translate(-50%, -50%) scale(1.5); }
+#bam-cursor.hidden   { opacity: 0; }
+
+/* ─── Keyframes ──────────────────────────────────────────────────────────── */
+
+@keyframes bam-fadeUp {
+  from { opacity: 0; transform: translateY(28px); }
+  to   { opacity: 1; transform: translateY(0);    }
+}
+
+@keyframes bam-fadeIn {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+@keyframes bam-float {
+  0%, 100% { transform: translateY(0);     }
+  50%      { transform: translateY(-10px); }
+}
+
+@keyframes bam-marquee {
+  from { transform: translateX(0);    }
+  to   { transform: translateX(-50%); }
+}
+
+@keyframes bam-spin {
+  from { transform: rotate(0deg);   }
+  to   { transform: rotate(360deg); }
+}
+
+@keyframes bam-pulse-border {
+  0%, 100% { border-color: var(--bam-border); }
+  50%      { border-color: rgba(240, 235, 225, 0.28); }
+}
+
+@keyframes bam-pulse-opacity {
+  0%, 100% { opacity: 0.35; }
+  50%      { opacity: 0.85; }
+}
+
+/* ─── Reveal primitive ───────────────────────────────────────────────────── */
+/* The <Reveal> component (components/Reveal.tsx) renders elements pre-hidden in
+   their fadeUp `from` state and plays the animation on intersection. With JS
+   off, nothing would ever reveal — this override (mirrored inline in the layout
+   <noscript> for first paint) keeps all content visible. Reduced motion skips
+   the movement entirely. */
+@media (prefers-reduced-motion: reduce) {
+  [data-reveal]      { opacity: 1 !important; transform: none !important; }
+  .bam-marquee-track { animation: none !important; }
+  .bam-dropzone      { animation: none !important; }
+}
+
+/* ─── Editorial components ───────────────────────────────────────────────── */
+
+.bam-eyebrow {
+  font-family:    var(--bam-font-mono);
+  font-size:      var(--bam-t-micro);
+  font-weight:    400;
+  color:          var(--bam-cream-20);
+  text-transform: uppercase;
+  letter-spacing: 0.22em;
+  line-height:    1;
+  margin-bottom:  var(--bam-space-md);
+}
+
+.bam-display {
+  font-family:    var(--bam-font-serif);
+  font-size:      var(--bam-t-display);
+  font-weight:    400;
+  color:          var(--bam-cream);
+  letter-spacing: -0.02em;
+  line-height:    0.88;
+}
+
+.bam-headline {
+  font-family:    var(--bam-font-serif);
+  font-size:      var(--bam-t-headline);
+  font-weight:    400;
+  color:          var(--bam-cream);
+  letter-spacing: -0.02em;
+  line-height:    0.92;
+}
+
+.bam-title {
+  font-family:    var(--bam-font-serif);
+  font-size:      var(--bam-t-title);
+  font-weight:    400;
+  color:          var(--bam-cream);
+  letter-spacing: -0.01em;
+  line-height:    1.1;
+}
+
+/* Italic = emotional emphasis. Use max once per page. */
+.bam-display em,
+.bam-headline em,
+.bam-title em { font-style: italic; }
+
+.bam-body {
+  font-family: var(--bam-font-mono);
+  font-size:   var(--bam-t-body);
+  font-weight: 300;
+  color:       var(--bam-cream-60);
+  line-height: 1.7;
+}
+
+.bam-divider {
+  width:      100%;
+  height:     1px;
+  background: var(--bam-border);
+  border:     none;
+  margin:     var(--bam-space-lg) 0;
+}
+
+/* Status badge — editorial. Pill is one of the two allowed radii. */
+.bam-badge {
+  display:        inline-flex;
+  align-items:    center;
+  font-family:    var(--bam-font-mono);
+  font-size:      0.6rem;
+  font-weight:    500;
+  text-transform: uppercase;
+  letter-spacing: 0.15em;
+  padding:        0.3em 0.8em;
+  border-radius:  9999px;
+  border:         1px solid;
+  white-space:    nowrap;
+}
+
+.bam-badge--pending {
+  color:        var(--bam-cream-40);
+  border-color: var(--bam-cream-20);
+  background:   transparent;
+}
+
+.bam-badge--confirmed {
+  color:        var(--bam-cream-80);
+  border-color: var(--bam-cream-40);
+  background:   var(--bam-cream-08);
+}
+
+.bam-badge--record {
+  color:        var(--bam-red);
+  border-color: var(--bam-red);
+  background:   var(--bam-red-subtle);
+}
+
+.bam-btn-primary {
+  font-family:     var(--bam-font-mono);
+  font-size:       var(--bam-t-label);
+  font-weight:     500;
+  text-transform:  uppercase;
+  letter-spacing:  0.2em;
+  color:           var(--bam-cream);
+  background:      var(--bam-red);
+  border:          none;
+  border-radius:   0;
+  padding:         1rem 2.5rem;
+  cursor:          pointer;
+  transition:      background 0.2s ease, transform 0.15s ease;
+  display:         inline-block;
+  text-decoration: none;
+}
+
+.bam-btn-primary:hover    { background: var(--bam-red-dark); transform: translateY(-1px); }
+.bam-btn-primary:disabled { background: rgba(200, 0, 60, 0.3); cursor: not-allowed; transform: none; }
+
+.bam-btn-ghost {
+  font-family:     var(--bam-font-mono);
+  font-size:       var(--bam-t-label);
+  font-weight:     400;
+  text-transform:  uppercase;
+  letter-spacing:  0.2em;
+  color:           var(--bam-cream-60);
+  background:      transparent;
+  border:          1px solid var(--bam-border);
+  border-radius:   0;
+  padding:         1rem 2.5rem;
+  cursor:          pointer;
+  transition:      border-color 0.2s ease, color 0.2s ease, transform 0.15s ease;
+  display:         inline-block;
+  text-decoration: none;
+}
+
+.bam-btn-ghost:hover {
+  border-color: rgba(240, 235, 225, 0.35);
+  color:        var(--bam-cream-80);
+  transform:    translateY(-1px);
+}
+
+.bam-field {
+  display:        flex;
+  flex-direction: column;
+  gap:            0.5rem;
+  margin-bottom:  var(--bam-space-lg);
+}
+
+.bam-label {
+  font-family:    var(--bam-font-mono);
+  font-size:      var(--bam-t-micro);
+  font-weight:    400;
+  text-transform: uppercase;
+  letter-spacing: 0.15em;
+  color:          var(--bam-cream-40);
+}
+
+.bam-input {
+  font-family:    var(--bam-font-mono);
+  font-size:      0.875rem;
+  font-weight:    400;
+  letter-spacing: 0.05em;
+  color:          var(--bam-cream-80);
+  background:     var(--bam-surface-2);
+  border:         1px solid rgba(240, 235, 225, 0.12);
+  border-radius:  0;
+  padding:        0.875rem 1rem;
+  width:          100%;
+  outline:        none;
+  transition:     border-color 0.2s ease, background 0.2s ease;
+}
+
+.bam-input::placeholder {
+  font-family:    var(--bam-font-mono);
+  font-size:      0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color:          var(--bam-cream-20);
+}
+
+.bam-input:focus {
+  border-color: rgba(240, 235, 225, 0.35);
+  background:   rgba(240, 235, 225, 0.04);
+}
+
+.bam-input--error { border-color: var(--bam-red); box-shadow: 0 0 0 1px var(--bam-red); }
+
+.bam-field-error {
+  font-family:    var(--bam-font-mono);
+  font-size:      var(--bam-t-micro);
+  color:          var(--bam-red);
+  margin-top:     0.25rem;
+  letter-spacing: 0.05em;
+}
+
+/* Data row — editorial key/value (summaries, profiles, detail pages) */
+.bam-data-list { display: flex; flex-direction: column; }
+
+.bam-data-row {
+  display:         flex;
+  justify-content: space-between;
+  align-items:     baseline;
+  gap:             var(--bam-space-xl);
+  padding:         0.875rem 0;
+  border-bottom:   1px solid var(--bam-border);
+}
+
+.bam-data-row:first-child { border-top: 1px solid var(--bam-border); }
+
+.bam-data-key {
+  font-family:    var(--bam-font-mono);
+  font-size:      var(--bam-t-micro);
+  font-weight:    400;
+  text-transform: uppercase;
+  letter-spacing: 0.15em;
+  color:          var(--bam-cream-40);
+  flex-shrink:    0;
+}
+
+.bam-data-val {
+  font-family: var(--bam-font-mono);
+  font-size:   0.875rem;
+  font-weight: 400;
+  color:       var(--bam-cream-80);
+  text-align:  right;
+}
+
+.bam-data-val--serif {
+  font-family:    var(--bam-font-serif);
+  font-size:      1.1rem;
+  letter-spacing: -0.01em;
+  color:          var(--bam-cream);
+}
+
+.bam-card {
+  background: var(--bam-surface);
+  border:     1px solid var(--bam-border);
+  padding:    var(--bam-space-lg);
+}
+
+.bam-card--featured {
+  border-color: rgba(200, 0, 60, 0.35);
+  background:   var(--bam-red-subtle);
+}
+
+.bam-nav {
+  position:        sticky;
+  top:             0;
+  display:         flex;
+  align-items:     center;
+  justify-content: space-between;
+  height:          52px;
+  padding:         0 var(--bam-pad);
+  border-bottom:   1px solid var(--bam-border);
+  background:      rgba(13, 13, 13, 0.85);
+  backdrop-filter: blur(12px);
+  z-index:         1000;
+}
+
+.bam-nav-brand {
+  font-family:    var(--bam-font-mono);
+  font-size:      var(--bam-t-micro);
+  font-weight:    400;
+  text-transform: uppercase;
+  letter-spacing: 0.2em;
+  color:          var(--bam-cream-40);
+}
+
+.bam-nav-page {
+  font-family:    var(--bam-font-mono);
+  font-size:      var(--bam-t-micro);
+  font-weight:    400;
+  text-transform: uppercase;
+  letter-spacing: 0.15em;
+  color:          var(--bam-cream-20);
+}
+
+.bam-marquee-wrap {
+  overflow:      hidden;
+  border-top:    1px solid var(--bam-border);
+  border-bottom: 1px solid var(--bam-border);
+  padding:       0.6rem 0;
+}
+
+.bam-marquee-track {
+  display:   flex;
+  gap:       0;
+  width:     max-content;
+  animation: bam-marquee 45s linear infinite;
+}
+
+.bam-marquee-item {
+  font-family:    var(--bam-font-mono);
+  font-size:      var(--bam-t-micro);
+  font-weight:    400;
+  text-transform: uppercase;
+  letter-spacing: 0.15em;
+  color:          var(--bam-cream-40);
+  white-space:    nowrap;
+  padding:        0 2rem;
+}
+
+.bam-marquee-item--accent { color: var(--bam-red); }
+
+.bam-notice {
+  padding:    var(--bam-space-md) var(--bam-space-lg);
+  border:     1px solid rgba(200, 0, 60, 0.25);
+  background: var(--bam-red-subtle);
+}
+
+.bam-notice-label {
+  font-family:    var(--bam-font-mono);
+  font-size:      var(--bam-t-micro);
+  text-transform: uppercase;
+  letter-spacing: 0.15em;
+  color:          var(--bam-red);
+  margin-bottom:  0.5rem;
+}
+
+.bam-notice-body {
+  font-family: var(--bam-font-mono);
+  font-size:   0.8rem;
+  color:       var(--bam-cream-60);
+  line-height: 1.6;
+}
+
+.bam-dropzone {
+  border:     1.5px dashed rgba(240, 235, 225, 0.15);
+  background: var(--bam-surface-2);
+  padding:    var(--bam-space-2xl) var(--bam-space-lg);
+  text-align: center;
+  cursor:     pointer;
+  transition: border-color 0.2s ease, background 0.2s ease;
+  animation:  bam-pulse-border 3s ease-in-out infinite;
+}
+
+.bam-dropzone:hover,
+.bam-dropzone--active {
+  border-color: rgba(240, 235, 225, 0.35);
+  background:   rgba(240, 235, 225, 0.04);
+  animation:    none;
+}
+
+/* ─── Layout patterns ────────────────────────────────────────────────────── */
+
+.bam-page {
+  background:              var(--bam-bg);
+  color:                  var(--bam-cream);
+  font-family:            var(--bam-font-mono);
+  -webkit-font-smoothing: antialiased;
+  min-height:             100vh;
+}
+
+.bam-pad-x { padding-left: var(--bam-pad); padding-right: var(--bam-pad); }
+
+.bam-narrow { max-width: 580px;  margin: 0 auto; }
+.bam-mid    { max-width: 760px;  margin: 0 auto; }
+.bam-wide   { max-width: 1100px; margin: 0 auto; }
+
+.bam-section-full {
+  min-height:     100vh;
+  padding-top:    var(--bam-space-3xl);
+  padding-bottom: var(--bam-space-3xl);
+}
+
+.bam-hero {
+  min-height:      88vh;
+  display:         flex;
+  flex-direction:  column;
+  justify-content: flex-end;
+  padding-bottom:  var(--bam-space-3xl);
+}
+
+.bam-split {
+  display:               grid;
+  gap:                   var(--bam-space-2xl);
+  grid-template-columns: 1fr 1fr;
+}
+
+@media (max-width: 768px) {
+  .bam-split { grid-template-columns: 1fr; }
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   DENSE / INDEX SURFACE
+   Opt in with data-surface="dense" on a wrapper. The coverage table lives here.
+   The one-accent law becomes an asset: the grid is monochrome cream-at-opacity,
+   so the single red (uncovered) is the only thing the eye jumps to across 200+
+   rows. States map to drift.ts: current · drifted · uncovered · unknown.
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+.bam-table {
+  width:           100%;
+  border-collapse: collapse;
+  font-family:     var(--bam-font-mono);
+}
+
+.bam-table thead th {
+  position:       sticky;
+  top:            52px;                 /* clears the sticky nav */
+  z-index:        2;
+  text-align:     left;
+  font-size:      var(--bam-t-col);
+  font-weight:    400;
+  text-transform: uppercase;
+  letter-spacing: 0.15em;
+  color:          var(--bam-cream-40);
+  background:     var(--bam-bg);
+  padding:        0.5rem 1rem;
+  border-bottom:  1px solid var(--bam-border);
+  white-space:    nowrap;
+}
+
+.bam-table td {
+  height:                var(--bam-row-h);
+  padding:               0 1rem;
+  font-size:             var(--bam-t-cell);
+  color:                 var(--bam-cream-80);
+  letter-spacing:        var(--bam-dense-track);
+  border-bottom:         1px solid var(--bam-border);
+  font-variant-numeric:  tabular-nums;
+  white-space:           nowrap;
+}
+
+.bam-table tbody tr { transition: background 0.12s ease; }
+.bam-table tbody tr:hover td { background: var(--bam-cream-03); }
+
+/* The one serif touch in the grid: protocol names stay human + scannable. */
+.bam-cell-name {
+  font-family:    var(--bam-font-serif);
+  font-size:      1rem;
+  color:          var(--bam-cream);
+  letter-spacing: -0.01em;
+}
+
+.bam-cell-num { text-align: right; font-variant-numeric: tabular-nums; }
+
+/* Coverage-state marker — dot (circle, allowed radius) + mono label. */
+.bam-state {
+  display:        inline-flex;
+  align-items:    center;
+  gap:            0.55em;
+  font-size:      var(--bam-t-micro);
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  color:          var(--bam-cream-40);
+}
+
+.bam-state::before {
+  content:       "";
+  width:         8px;
+  height:        8px;
+  border-radius: 50%;
+  background:    var(--bam-cream-40);
+  flex-shrink:   0;
+}
+
+/* current  — a covering audit exists, no upgrade since. Calm, receded. */
+.bam-state--current           { color: var(--bam-cream-40); }
+.bam-state--current::before   { background: var(--bam-cream-40); }
+
+/* drifted  — covered once, code moved after. Attention, not alarm. */
+.bam-state--drifted           { color: var(--bam-cream-80); }
+.bam-state--drifted::before   { background: var(--bam-cream); }
+
+/* uncovered — drifted from EVERY audit. The reserved red. */
+.bam-state--uncovered         { color: var(--bam-red); }
+.bam-state--uncovered::before { background: var(--bam-red); }
+
+/* unknown  — missing data, unevaluable. No signal: hollow, dashed. */
+.bam-state--unknown           { color: var(--bam-cream-20); }
+.bam-state--unknown::before   { background: transparent; border: 1px dashed var(--bam-cream-20); }
