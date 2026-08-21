@@ -35,10 +35,10 @@ Edit the schema, generate, then apply — never hand-edit generated SQL.
 
 - [x] 1. Schema, migrations, Neon connection, seed, `computeDrift()` + tests
       (done, commit `0bb2a3c`)
-- [ ] 2. bam83 foundation: tokens CSS, fonts, grain canvas, custom cursor,
-      scroll-reveal observer, typography kitchen-sink page  ← NEXT
+- [x] 2. bam83 foundation: tokens CSS, fonts, grain canvas, custom cursor,
+      scroll-reveal observer, typography kitchen-sink page (done, commit `a09bc34`)
 - [ ] 3. Public catalog: `/`, `/index`, `/protocols/[slug]`, ISR, OG images,
-      robots.txt, custom domain
+      robots.txt, custom domain  ← NEXT
 - [ ] 4. Auth, middleware, `/workspace` queue + target detail
 - [ ] 5. Ingest modules, findings editor, disclosure timeline
 
