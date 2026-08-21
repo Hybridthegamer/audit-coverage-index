@@ -1,0 +1,1 @@
+ALTER TABLE "deployments" DROP COLUMN IF EXISTS "drift_score";

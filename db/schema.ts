@@ -155,10 +155,10 @@ export const deployments = pgTable("deployments", {
   deployedCommit: text("deployed_commit"),
   sourceVerified: boolean("source_verified").notNull().default(false),
   explorerUrl: text("explorer_url"),
-  // drift_score is in the SPEC column list but has no defined formula
-  // ("nothing weighted"). Kept nullable/unused; drift_days + coverage_state
-  // are the real public numbers, both written by computeDrift().
-  driftScore: numeric("drift_score", { precision: 20, scale: 4 }),
+  // NOTE: SPEC lists a `drift_score` column but defines no formula for it
+  // ("nothing weighted"). Deliberately omitted — drift_days + coverage_state
+  // are the public numbers (written by computeDrift), and the only weighted
+  // metric, priority_score, is computed at query time for /workspace/targets.
   driftDays: integer("drift_days"),
   coverageState: coverageStateEnum("coverage_state").notNull().default("unknown"),
   lastCheckedAt: timestamp("last_checked_at", { withTimezone: true }),
