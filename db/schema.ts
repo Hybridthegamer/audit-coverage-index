@@ -11,6 +11,7 @@ import {
   primaryKey,
   text,
   timestamp,
+  uniqueIndex,
 } from "drizzle-orm/pg-core";
 
 /* ------------------------------------------------------------------ *
@@ -147,34 +148,52 @@ export const protocols = pgTable("protocols", {
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
-export const deployments = pgTable("deployments", {
-  id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
-  protocolId: integer("protocol_id")
-    .notNull()
-    .references(() => protocols.id, { onDelete: "cascade" }),
-  chain: chainEnum("chain").notNull(),
-  addressOrProgramId: text("address_or_program_id").notNull(),
-  label: text("label"),
-  tvlUsd: numeric("tvl_usd", { precision: 30, scale: 2 }),
-  isUpgradeable: boolean("is_upgradeable").notNull().default(false),
-  upgradeAuthority: text("upgrade_authority"),
-  // Original on-chain deployment date. Distinct from lastUpgradedAt and NOT
-  // in the SPEC column list — added because the drift rule measures an
-  // uncovered deployment's drift "from deployment date", which needs a home.
-  deployedAt: timestamp("deployed_at", { withTimezone: true }),
-  lastUpgradedAt: timestamp("last_upgraded_at", { withTimezone: true }),
-  deployedCommit: text("deployed_commit"),
-  sourceVerified: boolean("source_verified").notNull().default(false),
-  explorerUrl: text("explorer_url"),
-  // NOTE: SPEC lists a `drift_score` column but defines no formula for it
-  // ("nothing weighted"). Deliberately omitted — drift_days + coverage_state
-  // are the public numbers (written by computeDrift), and the only weighted
-  // metric, priority_score, is computed at query time for /workspace/targets.
-  driftDays: integer("drift_days"),
-  coverageState: coverageStateEnum("coverage_state").notNull().default("unknown"),
-  lastCheckedAt: timestamp("last_checked_at", { withTimezone: true }),
-  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-});
+export const deployments = pgTable(
+  "deployments",
+  {
+    id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
+    protocolId: integer("protocol_id")
+      .notNull()
+      .references(() => protocols.id, { onDelete: "cascade" }),
+    chain: chainEnum("chain").notNull(),
+    // Step 7 stores EVM addresses lowercase; the unique index below is keyed on
+    // lower() so a checksummed paste and a lowercase one are the same row.
+    addressOrProgramId: text("address_or_program_id").notNull(),
+    label: text("label"),
+    tvlUsd: numeric("tvl_usd", { precision: 30, scale: 2 }),
+    isUpgradeable: boolean("is_upgradeable").notNull().default(false),
+    upgradeAuthority: text("upgrade_authority"),
+    // Original on-chain deployment date. Distinct from lastUpgradedAt and NOT
+    // in the SPEC column list — added because the drift rule measures an
+    // uncovered deployment's drift "from deployment date", which needs a home.
+    deployedAt: timestamp("deployed_at", { withTimezone: true }),
+    lastUpgradedAt: timestamp("last_upgraded_at", { withTimezone: true }),
+    deployedCommit: text("deployed_commit"),
+    sourceVerified: boolean("source_verified").notNull().default(false),
+    explorerUrl: text("explorer_url"),
+    // NOTE: SPEC lists a `drift_score` column but defines no formula for it
+    // ("nothing weighted"). Deliberately omitted — drift_days + coverage_state
+    // are the public numbers (written by computeDrift), and the only weighted
+    // metric, priority_score, is computed at query time for /workspace/targets.
+    driftDays: integer("drift_days"),
+    coverageState: coverageStateEnum("coverage_state").notNull().default("unknown"),
+    lastCheckedAt: timestamp("last_checked_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  // Added in step 7, the only schema change the step needed — still 10 tables
+  // and no new columns. One contract is one row per protocol: pinning is now
+  // done from three places (the manual form, the explorer sweep, the CLI) and
+  // "the same address twice on the same chain" is not a state this database
+  // should be able to reach. Keyed on lower(address) so casing cannot smuggle
+  // a duplicate past it.
+  (t) => [
+    uniqueIndex("deployments_protocol_chain_address_key").on(
+      t.protocolId,
+      t.chain,
+      sql`lower(${t.addressOrProgramId})`,
+    ),
+  ],
+);
 
 export const audits = pgTable("audits", {
   id: integer("id").primaryKey().generatedAlwaysAsIdentity(),

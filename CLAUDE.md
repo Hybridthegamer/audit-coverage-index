@@ -3,7 +3,8 @@
 Audit Coverage Index — tracks which DeFi protocols run code their auditors
 never reviewed. Public coverage index (indexed, no auth) + private research
 workspace (`/workspace/*`, single-user auth). Built in numbered sessions;
-steps 1–6 are done and step 7 (on-chain deployment data) is next.
+steps 1–7 are done. There is no step 8 planned: the build is feature-complete
+and the work from here is operating it (see DEPLOYMENT.md §9).
 
 ## Stack
 
@@ -31,7 +32,12 @@ Migrations are committed under `drizzle/` and are the source of truth for the DB
   DESTRUCTIVE; the only script that truncates.
 - `npm run db:source` — sync the curated DefiLlama set. Idempotent + additive;
   flags `--dry-run`, `--limit=N`, `--no-ingest`
-- `npm test` — unit tests (drift, priority, ingest planners, DefiLlama source)
+- `npm run db:audits` — walk protocols' GitHub for audit reports (step 7).
+  Flags `--limit=N`, `--protocol=N`, `--refresh`, `--no-commits`
+- `npm run db:onchain` — resolve pinned contracts against Etherscan V2 (step 7).
+  Flags `--limit=N`, `--protocol=N`, `--refresh`, `--no-ingest`
+- `npm test` — unit tests (drift, priority, ingest planners, DefiLlama source,
+  explorer, GitHub discovery, submission generator)
 
 Edit the schema, generate, then apply — never hand-edit generated SQL.
 
@@ -55,14 +61,16 @@ Edit the schema, generate, then apply — never hand-edit generated SQL.
       `syncFromDefiLlama()` in `lib/ingest.ts`, `npm run db:source`, the capped
       in-app sync action, query-time `auditStatus`, and the unpinned-protocol
       table on the queue. Plan doc: `plan.md`.
-- [ ] 7. On-chain deployment + upgrade data (NOT started). Block explorers
-      (Etherscan/Basescan/Arbiscan) for real contract addresses per chain,
-      `deployed_commit`, `last_upgraded_at`, proxy-storage reads and upgrade
-      events; plus deeper audit-report discovery (GitHub `/audits` folders,
-      reviewed commits, report dates). This is what turns a sourced protocol's
-      `unknown` into a real `coverage_state`. Also unstarted: wiring
-      `vulnerability-submission-template.md` into a "generate submission"
-      action off a finding.
+- [x] 7. On-chain + audit-report data, and the submission generator (done).
+      `lib/sources/explorer.ts` (Etherscan V2, one key across six EVM chains) +
+      `lib/sources/github.ts` (audit-report discovery), their two configs, the
+      write half in `lib/ingest.onchain.ts` and the batch drivers in
+      `lib/ingest.sweeps.ts`; `npm run db:onchain` + `npm run db:audits` and
+      their capped in-app actions; `/workspace/protocols/[id]` for pinning
+      contracts; the deployed/reviewed commit + audit-coverage controls on the
+      target page; `lib/submission.ts` and
+      `/workspace/findings/[id]/submission`, which renders
+      `vulnerability-submission-template.md` from a recorded finding.
 
 ## Locked constraints from step 1
 
@@ -271,3 +279,118 @@ Edit the schema, generate, then apply — never hand-edit generated SQL.
   pure exported function tested against a fixture — the feed's field types are
   hostile (`audits` is a string, `github` is an org array, `url` is sometimes
   `ipfs://`) and every one of those shapes has a test.
+
+## Locked constraints from step 7
+
+- **THE TWO COMMITS ARE NEVER WRITTEN BY A MACHINE.** This is the step's
+  central rule and everything else in it follows from this. `computeDrift()`
+  needs `deployments.deployed_commit` and `audits.reviewed_commit` to produce
+  anything but `unknown`, and NO external source can supply either: a block
+  explorer holds bytecode and at best verified source text, never the commit
+  that produced it; a report filename is not a review scope, and the commit
+  that ADDED a report to a repo is typically days or weeks after the review it
+  describes. Writing a guess would feed a fabricated value to the one number
+  the public index exists to state. So step 7 splits hard:
+  · WRITES (facts): addresses, `deployed_at`, `last_upgraded_at`,
+    `is_upgradeable`, `upgrade_authority`, `source_verified`, `explorer_url`,
+    `upgrade_events`, and audit `auditor` / `report_url` / stated `report_date`.
+  · REFUSES (assertions): `deployed_commit`, `reviewed_commit`, and
+    `audit_deployments` links.
+  The refused three are exactly what `unknown` is waiting on, and each has a
+  form in the workspace — `recordDeployedCommitAction`,
+  `recordReviewedCommitAction` (which also sets `verified_by_me`, because
+  filling it in IS the verification), and `setAuditCoverageAction`. Do not
+  "finish" step 7 by automating any of them.
+- **Discovery's candidate commit lives in `scope_note`, as prose.** Deliberately
+  a note and not a value, so it cannot be mistaken for a recorded commit. Same
+  for a report date the filename does not state: `report_date` stays NULL and
+  the commit date is offered in the note as a candidate. `buildScopeNote()`
+  owns that text.
+- **No schema change beyond one index. Still 10 tables, no new columns.** Every
+  column step 7 needed already existed, `audits.source` already had a `'github'`
+  member since step 1. Migration `drizzle/0003_jazzy_nocturne.sql` adds a unique
+  index on `(protocol_id, chain, lower(address_or_program_id))` so a contract
+  cannot be pinned twice from the three places that pin (manual form, sweep,
+  CLI). EVM addresses are stored lowercase from step 7 on; non-EVM ids
+  (Solana programs, Stacks principals) are stored as typed, because those are
+  case-sensitive — `pinDeployment` owns that asymmetry.
+- **Etherscan V2 is ONE API across every supported chain**, keyed by a `chainid`
+  parameter, so there is one `ETHERSCAN_API_KEY` and not an
+  Etherscan/Basescan/Arbiscan trio — the V1 per-chain endpoints those keys
+  belonged to are retired. Supported: ethereum, optimism, bsc, polygon, base,
+  arbitrum. Every other member of the `chain` enum is reported as unsupported
+  and pinned by hand; `resolveDeployment` throws rather than silently skipping.
+- **`status: "0"` is overloaded and the two meanings must never merge.**
+  Etherscan returns it for both "no records found" (a correct empty answer for a
+  contract that has never been upgraded) and for a throttle or a bad key.
+  Conflating them would record a busy proxy as never upgraded — and
+  `last_upgraded_at` is a public number. `readEnvelope()` separates them by
+  message into `ok` / `empty` / `error`, and that separation is tested.
+- **Storage reads beat the explorer's proxy flag.** `deriveProxy` probes
+  EIP-1967 implementation, admin and beacon plus the legacy `org.zeppelinos`
+  slot; the explorer's `Proxy: "1"` is a human-set curation field and is only
+  the fallback. A beacon proxy records NO implementation (it lives one hop
+  further out, inside the beacon) rather than inventing one. `proxyKind` records
+  which signal decided it.
+- **A null from a source never overwrites a recorded value.** `planDeploymentWrite`
+  is the enforcement point — the step-7 counterpart to step 6's
+  `planProtocolWrite`. Null means "not established", which is weaker than a
+  researcher's hand-entered value, not newer. The two exceptions are
+  `is_upgradeable` and `source_verified`: those are booleans from a completed
+  probe, so a `false` is a real finding and moves in both directions. `label` is
+  fill-if-empty (a researcher's "v3 Pool (main)" beats
+  `TransparentUpgradeableProxy`), same rule step 6 used for `github_repo`.
+- **Sweeps never abort on one bad item.** `lib/ingest.sweeps.ts` catches per
+  item and counts; an unverified contract, a 404 repo, a rate limit and an
+  unsupported chain are all expected outcomes over ~900 protocols. A sweep that
+  gets halfway is worth exactly half a sweep, and a re-run picks up the rest
+  (backlog-first: never-resolved pins before already-resolved ones, unless
+  `--refresh`).
+- **The CLI-first split holds for both new sources**, same as `db:ingest` vs
+  `runIngestAction` (step 5) and `db:source` vs `syncDefiLlamaAction` (step 6).
+  `npm run db:onchain` and `npm run db:audits` are the primary run paths; the
+  in-app buttons are capped (`IN_APP_RESOLVE_LIMIT` 12, `IN_APP_DISCOVER_LIMIT`
+  25) and exist BECAUSE only they can call `revalidatePath`. One address costs
+  seven throttled explorer calls; unauthenticated GitHub allows sixty an hour.
+- **`lib/ingest.onchain.ts` and `lib/ingest.sweeps.ts` are separate files on
+  purpose.** `lib/ingest.ts` already carries the step-5 recompute and the step-6
+  DefiLlama sync; a third section would make it the place everything goes. The
+  write half (one deployment, one protocol) is `.onchain`, the batch drivers and
+  the failure policy are `.sweeps`. Both keep the db-as-an-argument rule and
+  import no client.
+- **`lib/submission.ts` is pure and enforces three things a template cannot.**
+  (1) NO PoC code — `poc_ref` is a pointer, there is no `poc_code` column, and
+  the PoC section renders the pointer only; a generator that inlined exploit
+  code would put runnable exploits in the database by the back door. (2) Missing
+  data is LOUD — every unfilled field becomes a `[TODO: …]` marker and is listed
+  in a banner, because a half-filled report sent confidently is the fastest way
+  to lose a triager. (3) Nothing is inflated — severity, funds at risk and the
+  coverage claim render exactly as recorded, and the post-audit callout appears
+  only when `in_post_audit_code` is actually true. Funds at risk render EXACTLY
+  (`$1,240,000`), not through `formatTvl`'s compact `$1.2M`: a triager checks
+  the figure.
+- **The submission's covering audit is the most recent LINKED audit**, chosen
+  the way `computeDrift` chooses it. An unlinked audit is never offered as cover
+  for a claim in an email to a protocol team.
+- **`db/queries/workspace.ts` gained `getProtocolDetail` and
+  `getSubmissionContext`.** Still no `published` predicate, still excludes
+  archived, still never imports leads or outreach_events. `getProtocolDetail` is
+  keyed on a PROTOCOL rather than a deployment, which is the whole point:
+  `getTarget` cannot see the ~900 protocols that have no deployment rows.
+- **`/workspace/protocols/[id]` is where a sourced protocol becomes a target.**
+  The queue's step-6 second table links to it; pinning one address graduates the
+  protocol into `getQueue()`. Audit discovery is protocol-level (reports belong
+  to a project, not an address) and lives on this page; commit and coverage
+  controls are deployment-level and live on the target page.
+- **The auditor list is a maintenance surface, and that is the design.**
+  `KNOWN_AUDITORS` in `lib/sources/github.ts` maps filename patterns to
+  canonical firm names; an unrecognised firm becomes `"Unknown (GitHub)"`
+  rather than a wrong attribution, so a gap degrades instead of lying. Patterns
+  use an explicit separator class, NOT `\b` — underscore is a word character,
+  so `/\babdk\b/` silently never matches `_ABDK_`, which is exactly how these
+  filenames are written. There is a regression test for that.
+- **Two-digit years are never parsed.** `10-24` is both "October 2024" and "the
+  10th of 2024-something", and `report_date` feeds `computeDrift`. A day-less
+  date that IS parseable (`2024-03`, `09-2025`) resolves to the FIRST of the
+  month: the earlier reading can only make coverage look more drifted, never
+  less, and this project does not round in its own favour.

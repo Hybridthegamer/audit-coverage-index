@@ -19,6 +19,7 @@ import {
   computeProtocolPriority,
   type AuditStatus,
 } from "@/lib/priority";
+import type { SubmissionContext } from "@/lib/submission";
 
 /* ═══════════════════════════════════════════════════════════════════════════
    PRIVATE QUERY SURFACE — the workspace counterpart to db/queries/public.ts.
@@ -645,5 +646,238 @@ export async function getFinding(findingId: number): Promise<FindingDetail | nul
     ...row,
     fundsAtRiskUsd: toNumber(row.fundsAtRiskUsd),
     disclosureEvents: events,
+  };
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   STEP 7 — the protocol-level detail page, and the submission context.
+
+   Two additions, both private, both inside the boundary this file has held
+   since step 4: no `published` predicate, `archived` still excluded, and still
+   no import of leads or outreach_events.
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+export interface ProtocolAuditRow {
+  id: number;
+  auditor: string;
+  reportUrl: string | null;
+  reportDate: Date | null;
+  reviewedCommit: string | null;
+  scopeNote: string | null;
+  source: string;
+  verifiedByMe: boolean;
+}
+
+export interface ProtocolDeploymentRow {
+  deploymentId: number;
+  chain: string;
+  addressOrProgramId: string;
+  label: string | null;
+  coverageState: CoverageState;
+  driftDays: number | null;
+  isUpgradeable: boolean;
+  deployedCommit: string | null;
+  deployedAt: Date | null;
+  lastUpgradedAt: Date | null;
+  sourceVerified: boolean;
+  explorerUrl: string | null;
+  lastCheckedAt: Date | null;
+  upgradeCount: number;
+}
+
+export interface ProtocolDetail {
+  protocolId: number;
+  name: string;
+  slug: string;
+  website: string | null;
+  githubRepo: string | null;
+  twitter: string | null;
+  securityContact: string | null;
+  isPublished: boolean;
+  hasBounty: boolean;
+  bountyPlatform: string;
+  bountyUrl: string | null;
+  tvlUsd: number | null;
+  auditStatus: AuditStatus;
+  /** Query-time protocol ranking. Only meaningful before contracts are pinned. */
+  priorityScore: number;
+  deployments: ProtocolDeploymentRow[];
+  audits: ProtocolAuditRow[];
+}
+
+/**
+ * One protocol's private record, keyed by protocol id (not deployment id).
+ *
+ * getTarget() above is keyed on a DEPLOYMENT and therefore cannot see a
+ * protocol that has none — which, after step 6, is roughly nine hundred of
+ * them. This is the page where a sourced protocol gets its contracts pinned and
+ * so becomes a target at all: the step-6 queue's second table links here, and
+ * pinning one address is what graduates it into getQueue().
+ */
+export async function getProtocolDetail(
+  protocolId: number,
+): Promise<ProtocolDetail | null> {
+  const [row] = await db
+    .select({
+      protocolId: protocols.id,
+      name: protocols.name,
+      slug: protocols.slug,
+      website: protocols.website,
+      githubRepo: protocols.githubRepo,
+      twitter: protocols.twitter,
+      securityContact: protocols.securityContact,
+      isPublished: protocols.isPublished,
+      hasBounty: protocols.hasBounty,
+      bountyPlatform: protocols.bountyPlatform,
+      bountyUrl: protocols.bountyUrl,
+      tvlUsd: protocols.tvlUsd,
+      auditStatus: auditStatusSql,
+    })
+    .from(protocols)
+    .where(and(active(), eq(protocols.id, protocolId)))
+    .limit(1);
+
+  if (!row) return null;
+
+  const deploymentRows = await db
+    .select({
+      deploymentId: deployments.id,
+      chain: deployments.chain,
+      addressOrProgramId: deployments.addressOrProgramId,
+      label: deployments.label,
+      coverageState: deployments.coverageState,
+      driftDays: deployments.driftDays,
+      isUpgradeable: deployments.isUpgradeable,
+      deployedCommit: deployments.deployedCommit,
+      deployedAt: deployments.deployedAt,
+      lastUpgradedAt: deployments.lastUpgradedAt,
+      sourceVerified: deployments.sourceVerified,
+      explorerUrl: deployments.explorerUrl,
+      lastCheckedAt: deployments.lastCheckedAt,
+      upgradeCount: sql<number>`(
+        select count(*)::int from ${upgradeEvents}
+        where ${upgradeEvents.deploymentId} = ${deployments.id}
+      )`,
+    })
+    .from(deployments)
+    .where(eq(deployments.protocolId, protocolId))
+    .orderBy(byCoverageSeverity, desc(deployments.id));
+
+  const auditRows = await db
+    .select({
+      id: audits.id,
+      auditor: audits.auditor,
+      reportUrl: audits.reportUrl,
+      reportDate: audits.reportDate,
+      reviewedCommit: audits.reviewedCommit,
+      scopeNote: audits.scopeNote,
+      source: audits.source,
+      verifiedByMe: audits.verifiedByMe,
+    })
+    .from(audits)
+    .where(eq(audits.protocolId, protocolId))
+    .orderBy(sql`${audits.reportDate} desc nulls last`, desc(audits.id));
+
+  const tvlUsd = toNumber(row.tvlUsd);
+
+  return {
+    ...row,
+    tvlUsd,
+    priorityScore: computeProtocolPriority({
+      auditStatus: row.auditStatus,
+      tvlUsd,
+      hasBounty: row.hasBounty,
+    }),
+    deployments: deploymentRows,
+    audits: auditRows,
+  };
+}
+
+/**
+ * Everything lib/submission.ts needs to render the three artefacts, in one
+ * query pass.
+ *
+ * `getFinding` above deliberately stops at the finding and its timeline; a
+ * submission also needs the protocol's security contact and bounty, the
+ * deployment's commit and coverage verdict, and the audit that should have
+ * covered the code. Rather than widen getFinding for every caller, this is its
+ * own loader — the same reason getTarget and getQueue are separate.
+ *
+ * The covering audit is chosen the way computeDrift chooses it: the most recent
+ * LINKED audit by report date. That link is the researcher's recorded ancestry
+ * assertion, so an unlinked audit is never offered as cover for a claim made in
+ * an email to a protocol team.
+ */
+export async function getSubmissionContext(
+  findingId: number,
+): Promise<SubmissionContext | null> {
+  const [row] = await db
+    .select({
+      protocolName: protocols.name,
+      securityContact: protocols.securityContact,
+      website: protocols.website,
+      githubRepo: protocols.githubRepo,
+      hasBounty: protocols.hasBounty,
+      bountyPlatform: protocols.bountyPlatform,
+      bountyUrl: protocols.bountyUrl,
+      chain: deployments.chain,
+      addressOrProgramId: deployments.addressOrProgramId,
+      deploymentLabel: deployments.label,
+      deployedCommit: deployments.deployedCommit,
+      explorerUrl: deployments.explorerUrl,
+      coverageState: deployments.coverageState,
+      driftDays: deployments.driftDays,
+      deploymentId: deployments.id,
+      title: findings.title,
+      severity: findings.severity,
+      immunefiClass: findings.immunefiClass,
+      fundsAtRiskUsd: findings.fundsAtRiskUsd,
+      summary: findings.summary,
+      rootCause: findings.rootCause,
+      attackPath: findings.attackPath,
+      preconditions: findings.preconditions,
+      impact: findings.impact,
+      recommendedFix: findings.recommendedFix,
+      pocRef: findings.pocRef,
+      inPostAuditCode: findings.inPostAuditCode,
+    })
+    .from(findings)
+    .innerJoin(deployments, eq(findings.deploymentId, deployments.id))
+    .innerJoin(protocols, eq(deployments.protocolId, protocols.id))
+    .where(eq(findings.id, findingId))
+    .limit(1);
+
+  if (!row) return null;
+
+  const [covering] = await db
+    .select({
+      auditor: audits.auditor,
+      reportDate: audits.reportDate,
+      reviewedCommit: audits.reviewedCommit,
+      reportUrl: audits.reportUrl,
+    })
+    .from(auditDeployments)
+    .innerJoin(audits, eq(auditDeployments.auditId, audits.id))
+    .where(eq(auditDeployments.deploymentId, row.deploymentId))
+    .orderBy(sql`${audits.reportDate} desc nulls last`, desc(audits.id))
+    .limit(1);
+
+  const [firstContact] = await db
+    .select({ occurredAt: disclosureEvents.occurredAt })
+    .from(disclosureEvents)
+    .where(
+      and(
+        eq(disclosureEvents.findingId, findingId),
+        eq(disclosureEvents.eventType, "initial_contact"),
+      ),
+    )
+    .orderBy(disclosureEvents.occurredAt)
+    .limit(1);
+
+  return {
+    ...row,
+    fundsAtRiskUsd: toNumber(row.fundsAtRiskUsd),
+    coveringAudit: covering ?? null,
+    firstContactAt: firstContact?.occurredAt ?? null,
   };
 }

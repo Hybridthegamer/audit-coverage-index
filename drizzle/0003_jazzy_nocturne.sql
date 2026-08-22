@@ -1,0 +1,1 @@
+CREATE UNIQUE INDEX IF NOT EXISTS "deployments_protocol_chain_address_key" ON "deployments" USING btree ("protocol_id","chain",lower("address_or_program_id"));

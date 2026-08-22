@@ -1,5 +1,17 @@
 # Step 6 — DefiLlama integration (real data sourcing)
 
+> **Step 7 has since shipped too.** Everything this document defers to "step 7"
+> — block explorers, real contract addresses, `deployed_commit`,
+> `last_upgraded_at`, proxy reads, upgrade events, deeper audit-report
+> discovery, and the submission generator — is built. What shipped is recorded
+> in CLAUDE.md under "Locked constraints from step 7"; how to run it is
+> DEPLOYMENT.md §9–§11.
+>
+> One thing this document predicted differently: §7 said step 7 "unlocks true
+> commit-level `coverage_state`". It unlocks the machinery around it. The two
+> commits themselves are still entered by a human, because no explorer knows a
+> commit and no filename is a review scope — see CLAUDE.md, step 7, first bullet.
+>
 > **STATUS: BUILT.** This is the planning doc, kept for the reasoning. What
 > shipped is recorded in CLAUDE.md under "Locked constraints from step 6";
 > where the two disagree, CLAUDE.md is right. Answers to §9, as built:

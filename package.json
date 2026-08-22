@@ -13,6 +13,8 @@
     "db:seed": "tsx db/seed.ts",
     "db:ingest": "tsx scripts/ingest.ts",
     "db:source": "tsx scripts/source-defillama.ts",
+    "db:onchain": "tsx scripts/onchain.ts",
+    "db:audits": "tsx scripts/discover-audits.ts",
     "test": "vitest run",
     "test:watch": "vitest"
   },

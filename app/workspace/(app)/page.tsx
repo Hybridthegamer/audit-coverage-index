@@ -3,7 +3,12 @@ import Link from "next/link";
 import { Reveal } from "@/components/Reveal";
 import { StateMarker } from "@/components/StateMarker";
 import { WorkspaceNav } from "@/components/WorkspaceNav";
-import { runIngestAction, syncDefiLlamaAction } from "@/app/workspace/mutations";
+import {
+  discoverAuditsSweepAction,
+  resolveOnChainSweepAction,
+  runIngestAction,
+  syncDefiLlamaAction,
+} from "@/app/workspace/mutations";
 import {
   getQueue,
   getSourcedProtocols,
@@ -20,6 +25,8 @@ import {
   truncateAddress,
 } from "@/lib/format";
 import { IN_APP_SYNC_LIMIT } from "@/lib/sources/defillama.config";
+import { IN_APP_RESOLVE_LIMIT } from "@/lib/sources/explorer.config";
+import { IN_APP_DISCOVER_LIMIT } from "@/lib/sources/github.config";
 
 /**
  * The research queue — every active target ranked for review. This is the
@@ -89,6 +96,22 @@ export default async function QueuePage() {
               <form action={syncDefiLlamaAction}>
                 <button type="submit" className="bam-btn-sm">
                   Sync DefiLlama · top {IN_APP_SYNC_LIMIT}
+                </button>
+              </form>
+
+              {/* Step 7. Both are capped for the same reason the sync above is:
+                  `npm run db:onchain` and `npm run db:audits` are the primary
+                  run paths, and these buttons exist because only they can call
+                  revalidatePath. */}
+              <form action={resolveOnChainSweepAction}>
+                <button type="submit" className="bam-btn-sm">
+                  Resolve on-chain · {IN_APP_RESOLVE_LIMIT}
+                </button>
+              </form>
+
+              <form action={discoverAuditsSweepAction}>
+                <button type="submit" className="bam-btn-sm">
+                  Discover audits · {IN_APP_DISCOVER_LIMIT}
                 </button>
               </form>
             </div>
@@ -215,8 +238,9 @@ export default async function QueuePage() {
                 Protocols the DefiLlama sync curated but for which no contract
                 addresses have been recorded, so they carry no coverage state
                 yet — the feed lists TVL and audit reports, never deployed code.
-                Ranked by audit presence and money at risk. Pin a protocol&rsquo;s
-                contracts and it joins the queue above.
+                Ranked by audit presence and money at risk. Open one to pin its
+                contracts and walk its repo for audit reports; one pinned
+                address is enough to graduate it into the queue above.
               </p>
 
               <div
@@ -251,7 +275,13 @@ export default async function QueuePage() {
                       <tr key={p.protocolId}>
                         <td className="bam-cell-num">{p.priorityScore}</td>
                         <td>
-                          <span className="bam-cell-name">{p.name}</span>{" "}
+                          <Link
+                            href={"/workspace/protocols/" + p.protocolId}
+                            className="bam-cell-name"
+                            style={{ textDecoration: "none" }}
+                          >
+                            {p.name}
+                          </Link>{" "}
                           <span
                             style={{
                               fontSize: "var(--bam-t-micro)",

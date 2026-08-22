@@ -6,7 +6,11 @@ import { Reveal } from "@/components/Reveal";
 import { StateMarker } from "@/components/StateMarker";
 import { WorkspaceNav } from "@/components/WorkspaceNav";
 import {
+  recordDeployedCommitAction,
+  recordReviewedCommitAction,
+  resolveDeploymentAction,
   saveResearchLog,
+  setAuditCoverageAction,
   setPublished,
   transitionQueue,
 } from "@/app/workspace/mutations";
@@ -24,6 +28,7 @@ import {
   queueStatusLabel,
   shortCommit,
 } from "@/lib/format";
+import { isSupportedChain, SUPPORTED_CHAINS } from "@/lib/sources/explorer";
 
 const QUEUE_TRANSITIONS: { status: string; label: string }[] = [
   { status: "queued", label: "Queue" },
@@ -38,8 +43,15 @@ const QUEUE_TRANSITIONS: { status: string; label: string }[] = [
  * with the commit it reviewed and whether it covers THIS deployment, the
  * on-chain upgrade history, and the queue item's status + research log.
  *
- * This is a read view. Editing the queue, writing findings, and the disclosure
- * timeline are step 5; there is deliberately no mutation here beyond auth.
+ * Step 5 made it writable (queue transitions, research log, findings). Step 7
+ * added the three things that turn `unknown` into a real verdict: resolve the
+ * contract against its block explorer, record the DEPLOYED commit, and record
+ * each audit's REVIEWED commit plus whether it covers this deployment.
+ *
+ * Those last two are forms rather than an automated sweep on purpose. No
+ * explorer knows a git commit and no filename is a review scope, so both are
+ * the researcher's assertion — and the audit/deployment link is the single
+ * claim the whole public coverage verdict rests on.
  *
  * force-dynamic: private, per-session, never cached.
  */
@@ -216,6 +228,59 @@ export default async function TargetPage({
                   {target.sourceVerified ? "Yes" : "No"}
                 </Row>
               </div>
+
+              {/* Resolve against the block explorer: creation date, proxy admin,
+                  every Upgraded(address) log. It cannot resolve the deployed
+                  COMMIT — an explorer has bytecode, never a commit — which is
+                  what the form below it is for. */}
+              <div style={{ marginTop: "var(--bam-space-lg)" }}>
+                {isSupportedChain(target.chain) ? (
+                  <form action={resolveDeploymentAction}>
+                    <input
+                      type="hidden"
+                      name="deploymentId"
+                      value={target.deploymentId}
+                    />
+                    <button type="submit" className="bam-btn-sm">
+                      {target.lastCheckedAt === null
+                        ? "Resolve on-chain"
+                        : "Re-resolve on-chain"}
+                    </button>
+                  </form>
+                ) : (
+                  <p className="bam-body">
+                    {chainLabel(target.chain)} has no block-explorer support, so
+                    this deployment&rsquo;s facts are recorded by hand. Automatic
+                    resolution covers {SUPPORTED_CHAINS.length} EVM chains.
+                  </p>
+                )}
+              </div>
+
+              {/* The DEPLOYED commit — half of what computeDrift needs, and the
+                  half nothing automated can supply. Submitting it empty clears
+                  the claim and returns the target to `unknown`. */}
+              <form
+                action={recordDeployedCommitAction}
+                style={{ marginTop: "var(--bam-space-lg)" }}
+              >
+                <input type="hidden" name="deploymentId" value={target.deploymentId} />
+                <div className="bam-field">
+                  <label className="bam-label" htmlFor="deployedCommit">
+                    Deployed commit — your assertion, matched from the verified
+                    source. Empty clears it.
+                  </label>
+                  <input
+                    id="deployedCommit"
+                    name="deployedCommit"
+                    className="bam-input"
+                    defaultValue={target.deployedCommit ?? ""}
+                    placeholder="abc1234…"
+                  />
+                </div>
+                <button type="submit" className="bam-btn-sm">
+                  Record deployed commit
+                </button>
+              </form>
             </Reveal>
 
             {/* ─── Coverage ──────────────────────────────────────────── */}
@@ -320,6 +385,89 @@ export default async function TargetPage({
                           </Row>
                         ) : null}
                       </div>
+
+                      {/* The REVIEWED commit. Discovery leaves a candidate sha
+                          in the scope note above; this is where it stops being
+                          a note. Recording it also marks the audit verified,
+                          because filling it in IS the verification — somebody
+                          opened the report and read its scope section. */}
+                      <form
+                        action={recordReviewedCommitAction}
+                        style={{ marginTop: "var(--bam-space-md)" }}
+                      >
+                        <input type="hidden" name="auditId" value={audit.id} />
+                        <input
+                          type="hidden"
+                          name="deploymentId"
+                          value={target.deploymentId}
+                        />
+                        <div className="bam-form-grid">
+                          <div className="bam-field">
+                            <label
+                              className="bam-label"
+                              htmlFor={"reviewedCommit-" + audit.id}
+                            >
+                              Reviewed commit
+                            </label>
+                            <input
+                              id={"reviewedCommit-" + audit.id}
+                              name="reviewedCommit"
+                              className="bam-input"
+                              defaultValue={audit.reviewedCommit ?? ""}
+                              placeholder="def5678…"
+                            />
+                          </div>
+                          <div className="bam-field">
+                            <label
+                              className="bam-label"
+                              htmlFor={"reportDate-" + audit.id}
+                            >
+                              Report date (off the cover page)
+                            </label>
+                            <input
+                              id={"reportDate-" + audit.id}
+                              name="reportDate"
+                              type="date"
+                              className="bam-input"
+                              defaultValue={
+                                audit.reportDate
+                                  ? audit.reportDate.toISOString().slice(0, 10)
+                                  : ""
+                              }
+                            />
+                          </div>
+                        </div>
+                        <button type="submit" className="bam-btn-sm">
+                          Record reviewed commit
+                        </button>
+                      </form>
+
+                      {/* The ancestry assertion. recomputeDrift trusts this link
+                          as recorded proof that the reviewed commit is an
+                          ancestor of what is deployed here — the single claim
+                          the public verdict rests on, which is why nothing
+                          automated ever creates one. */}
+                      <form
+                        action={setAuditCoverageAction}
+                        style={{ marginTop: "var(--bam-space-md)" }}
+                      >
+                        <input type="hidden" name="auditId" value={audit.id} />
+                        <input
+                          type="hidden"
+                          name="deploymentId"
+                          value={target.deploymentId}
+                        />
+                        <input
+                          type="hidden"
+                          name="covered"
+                          value={audit.covered ? "false" : "true"}
+                        />
+                        <button type="submit" className="bam-btn-sm">
+                          {audit.covered
+                            ? "Unlink from this deployment"
+                            : "This audit covers this deployment"}
+                        </button>
+                      </form>
                     </div>
                   ))}
                 </div>
@@ -540,6 +688,31 @@ export default async function TargetPage({
                   ))}
                 </div>
               )}
+
+              {/* Step 7: the submission generator hangs off each finding — the
+                  template\'s three artefacts, rendered from what is recorded. */}
+              {findings.length > 0 ? (
+                <div
+                  style={{
+                    display: "flex",
+                    gap: "var(--bam-space-sm)",
+                    flexWrap: "wrap",
+                    marginTop: "var(--bam-space-md)",
+                  }}
+                >
+                  {findings.map((f) => (
+                    <Link
+                      key={f.id}
+                      href={"/workspace/findings/" + f.id + "/submission"}
+                      className="bam-btn-sm"
+                      style={{ textDecoration: "none" }}
+                    >
+                      Submission · {f.title.slice(0, 28)}
+                      {f.title.length > 28 ? "…" : ""}
+                    </Link>
+                  ))}
+                </div>
+              ) : null}
 
               <div style={{ marginTop: "var(--bam-space-lg)" }}>
                 <Link
