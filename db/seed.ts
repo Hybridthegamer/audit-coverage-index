@@ -377,14 +377,52 @@ async function main() {
     note: "Sourced from seed. Confirm security.txt before any contact.",
   });
 
-  await db.insert(schema.queueItems).values({
-    deploymentId: uniEth!.id,
-    status: "candidate",
-    priority: 1,
-    researchLog: "# Uniswap V3 factory\n\nCovering audit is 2021; on-chain change in 2024. Diff pending.",
-  });
+  // Queue items across every status so the private workspace queue (step 4)
+  // demonstrates its ranking and the cleared-requires-reason DB constraint.
+  // Aerodrome (uncovered) intentionally sits highest; Aave (current) is cleared.
+  await db.insert(schema.queueItems).values([
+    {
+      deploymentId: aeroBase!.id,
+      status: "in_review",
+      priority: 1,
+      queuedAt: d("2025-11-02"),
+      startedAt: d("2025-11-20"),
+      researchLog:
+        "# Aerodrome Router\n\nNo audit covers the deployed commit (77c1d2aa). Real TVL on Base, no bounty. Diffing router against last public review.",
+    },
+    {
+      deploymentId: compEth!.id,
+      status: "queued",
+      priority: 2,
+      queuedAt: d("2025-12-10"),
+      researchLog:
+        "# Compound III (Comet)\n\nChainSecurity 2023 is the covering audit; Sep 2024 upgrade drifted it. Scope the delta.",
+    },
+    {
+      deploymentId: uniEth!.id,
+      status: "candidate",
+      researchLog:
+        "# Uniswap V3 factory\n\nCovering audit is 2021; on-chain change in 2024. Diff pending.",
+    },
+    {
+      deploymentId: aaveEth!.id,
+      status: "cleared",
+      queuedAt: d("2025-10-01"),
+      closedAt: d("2025-10-14"),
+      clearReason:
+        "Covering audit (SigmaPrime, Jun 2024) post-dates the last upgrade. Nothing shipped since — current, nothing to review.",
+    },
+    {
+      deploymentId: gmxArb!.id,
+      status: "dropped",
+      queuedAt: d("2025-09-05"),
+      closedAt: d("2025-09-06"),
+      researchLog:
+        "# GMX V2 Vault\n\nDeployed commit not recorded — coverage is unknown, not a target until we can resolve ancestry.",
+    },
+  ]);
 
-  console.log("Seed complete: 5 protocols, 5 deployments, 5 audits, 3 upgrade events.");
+  console.log("Seed complete: 5 protocols, 5 deployments, 5 audits, 3 upgrade events, 5 queue items.");
   const rows = await db
     .select({
       slug: schema.protocols.slug,

@@ -40,8 +40,10 @@ Edit the schema, generate, then apply — never hand-edit generated SQL.
 - [~] 3. Public catalog: `/`, `/index`, `/protocols/[slug]`, ISR, OG images,
       robots.txt (done). Custom domain is the only piece left — buy it, point
       it at the deploy, then set `NEXT_PUBLIC_SITE_URL`; no code change needed.
-- [ ] 4. Auth, middleware, `/workspace` queue + target detail  ← NEXT
-- [ ] 5. Ingest modules, findings editor, disclosure timeline
+- [x] 4. Auth, middleware, `/workspace` queue + target detail (done). Single-user
+      cookie gate, private query surface, priority-ranked queue, read-only target
+      detail. Queue mutations + findings/disclosure are step 5.
+- [ ] 5. Ingest modules, findings editor, disclosure timeline  ← NEXT
 
 ## Locked constraints from step 1
 
@@ -90,6 +92,36 @@ Edit the schema, generate, then apply — never hand-edit generated SQL.
   A modern UA yields WOFF2 and an MSIE 6 UA yields EOT — both crash Satori.
 - **Site origin lives only in `lib/site.ts`**, read from `NEXT_PUBLIC_SITE_URL`
   (falling back to `VERCEL_PROJECT_PRODUCTION_URL`, then localhost).
+
+## Locked constraints from step 4
+
+- **`db/queries/workspace.ts` is the private query surface** — the deliberate
+  opposite of `public.ts`. It does NOT apply the `published` predicate (the
+  researcher works on unpublished targets), and it MAY read `queue_items`. It
+  does not, in this build, import findings, disclosure_events, leads, or
+  outreach_events — those are step 5. Adding one is a step-5 change.
+- **Auth is a single-user cookie gate, not an identity system.** One
+  `WORKSPACE_PASSWORD`, no users table (10 tables stay locked). A login mints a
+  signed, expiring cookie; `lib/auth.ts` verifies it. There is no DB session
+  store. Both env secrets are required and server-only (never `NEXT_PUBLIC_`).
+- **`lib/auth.ts` is runtime-agnostic on purpose** — Web Crypto (`crypto.subtle`)
+  + `TextEncoder` only, so the SAME verifier runs in Edge middleware and the
+  Node login action. Do not reach for Node's `crypto` module there; it breaks
+  the Edge bundle. Env is read via static property access so Next can inline it.
+- **`middleware.ts` is the gate.** It protects `/workspace` + `/workspace/:path*`
+  and exempts only `/workspace/login` (the page and its server-action POST).
+  robots.txt disallowing `/workspace` is defence in depth, not the control.
+- **`priority_score` is computed, never stored** (`lib/priority.ts`, pure +
+  tested like `drift.ts`). It is a private research heuristic with a written
+  formula — NOT the public coverage metric, NOT a percentage. It never leaves
+  the authed workspace and is never written to the DB.
+- **The authed shell lives in the `(app)` route group.** `/workspace/login`
+  sits outside it so it never inherits the nav/logout. `app/workspace/layout.tsx`
+  only sets `noindex`. Every authed page is `force-dynamic` — private data is
+  never prerendered or ISR-cached.
+- **Step 4 is read-only** beyond auth. Queue transitions (queue/start/clear/
+  drop) and the findings editor are step 5; target detail deliberately does not
+  read the findings or disclosure_events tables.
 
 ## Hard constraints
 

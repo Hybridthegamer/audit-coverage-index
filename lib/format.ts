@@ -47,6 +47,25 @@ export function chainLabel(chain: string): string {
   return CHAIN_LABEL[chain] ?? chain;
 }
 
+/**
+ * Private research-queue status labels. Used only by the authenticated
+ * workspace, but kept here with the other label maps so presentation stays in
+ * one place. `null` renders as "Unqueued" — a target with no queue item yet.
+ */
+export const QUEUE_STATUS_LABEL: Record<string, string> = {
+  candidate: "Candidate",
+  queued: "Queued",
+  in_review: "In review",
+  cleared: "Cleared",
+  finding_found: "Finding",
+  dropped: "Dropped",
+};
+
+export function queueStatusLabel(status: string | null): string {
+  if (status === null) return "Unqueued";
+  return QUEUE_STATUS_LABEL[status] ?? status;
+}
+
 /** Em dash for absent values — never "null", never a bare empty cell. */
 export const EMPTY = "—";
 
@@ -55,6 +74,13 @@ export function formatDate(value: Date | null): string {
   if (!value) return EMPTY;
   const iso = value.toISOString();
   return iso.slice(0, 10);
+}
+
+/** `2024-11-02 14:30 UTC`. Timestamp for the private workspace (upgrade log). */
+export function formatDateTime(value: Date | null): string {
+  if (!value) return EMPTY;
+  const iso = value.toISOString();
+  return `${iso.slice(0, 10)} ${iso.slice(11, 16)} UTC`;
 }
 
 /** `$1.2B` / `$340.5M` / `$12.0K`. Compact, because the column is narrow. */
