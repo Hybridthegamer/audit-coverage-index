@@ -66,6 +66,40 @@ export function queueStatusLabel(status: string | null): string {
   return QUEUE_STATUS_LABEL[status] ?? status;
 }
 
+/** Finding lifecycle labels (private workspace, step 5). */
+export const FINDING_STATUS_LABEL: Record<string, string> = {
+  draft: "Draft",
+  contact_sent: "Contact sent",
+  acknowledged: "Acknowledged",
+  triaged: "Triaged",
+  accepted: "Accepted",
+  fixed: "Fixed",
+  disputed: "Disputed",
+  duplicate: "Duplicate",
+  no_response: "No response",
+};
+
+export function findingStatusLabel(status: string): string {
+  return FINDING_STATUS_LABEL[status] ?? status;
+}
+
+/** Disclosure-timeline event labels (private workspace, step 5). */
+export const DISCLOSURE_EVENT_LABEL: Record<string, string> = {
+  initial_contact: "Initial contact",
+  follow_up: "Follow-up",
+  reply_received: "Reply received",
+  report_sent: "Report sent",
+  ack: "Acknowledged",
+  fix_deployed: "Fix deployed",
+  payout: "Payout",
+  escalated_seal911: "Escalated (SEAL 911)",
+  published: "Published",
+};
+
+export function disclosureEventLabel(type: string): string {
+  return DISCLOSURE_EVENT_LABEL[type] ?? type;
+}
+
 /** Em dash for absent values — never "null", never a bare empty cell. */
 export const EMPTY = "—";
 

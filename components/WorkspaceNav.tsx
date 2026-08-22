@@ -1,7 +1,5 @@
 import Link from "next/link";
 
-import { logout } from "@/app/workspace/actions";
-
 /**
  * The private workspace nav. Mirrors the public SiteNav's proportions (52px, so
  * the dense table's sticky header offset still lines up) but is unmistakably the
@@ -26,7 +24,7 @@ export function WorkspaceNav({ page }: { page: string }) {
         }}
       >
         <span className="bam-nav-page">{page}</span>
-        <form action={logout} style={{ display: "inline" }}>
+        <form method="POST" action="/workspace/logout" style={{ display: "inline" }}>
           <button
             type="submit"
             className="bam-nav-page"

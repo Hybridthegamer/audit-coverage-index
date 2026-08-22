@@ -78,11 +78,15 @@ export function verifyPassword(input: string): boolean {
   return timingSafeEqual(input, requireEnv("WORKSPACE_PASSWORD"));
 }
 
-/** Mint a session token: `<expiryMs>.<hmac(expiryMs)>`. */
-export async function createSessionToken(): Promise<string> {
-  const expiry = String(Date.now() + SESSION_MAX_AGE * 1000);
-  return `${expiry}.${await sign(expiry)}`;
-}
+/*
+ * Minting a token lives in lib/auth-node.ts, not here. It signs SYNCHRONOUSLY
+ * with node:crypto because the login server action mints inside a request that
+ * then sets a cookie — and awaiting WebCrypto (crypto.subtle runs on the libuv
+ * threadpool) drops Next's request scope, so a following cookies() throws
+ * "called outside a request scope". Verification stays async WebCrypto here so
+ * this module remains edge-safe for middleware; both sides are plain
+ * HMAC-SHA256 over the same message and secret, so a node-signed token verifies.
+ */
 
 /**
  * True when `token` is well-formed, unexpired, and correctly signed. Any

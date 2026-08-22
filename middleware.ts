@@ -20,9 +20,9 @@ import { SESSION_COOKIE, verifySessionToken } from "@/lib/auth";
 export async function middleware(req: NextRequest) {
   const { pathname, search } = req.nextUrl;
 
-  // The login page and its server-action POST must stay reachable while signed
-  // out. Nothing sensitive is rendered there.
-  if (pathname === "/workspace/login") {
+  // The login page and the login endpoint must stay reachable while signed
+  // out. Nothing sensitive is served from either.
+  if (pathname === "/workspace/login" || pathname === "/workspace/auth") {
     return NextResponse.next();
   }
 

@@ -1,7 +1,5 @@
 import type { Metadata } from "next";
 
-import { login } from "@/app/workspace/actions";
-
 /**
  * The workspace gate. A single password field posting to the `login` server
  * action; no client JS, so it works with scripts off (in keeping with the rest
@@ -61,7 +59,7 @@ export default async function LoginPage({
             </div>
           ) : null}
 
-          <form action={login}>
+          <form method="POST" action="/workspace/auth">
             {next ? <input type="hidden" name="next" value={next} /> : null}
             <div className="bam-field">
               <label className="bam-label" htmlFor="password">

@@ -691,3 +691,112 @@ body:not(.is-touch) *::after {
 /* unknown  — missing data, unevaluable. No signal: hollow, dashed. */
 .bam-state--unknown           { color: var(--bam-cream-20); }
 .bam-state--unknown::before   { background: transparent; border: 1px dashed var(--bam-cream-20); }
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   WORKSPACE FORMS + DISCLOSURE TIMELINE (build step 5)
+   Private surface only. Reuses the editorial input system; adds textarea/select
+   parity, a compact button, and a vertical timeline for disclosure_events.
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+textarea.bam-input {
+  min-height: 6rem;
+  line-height: 1.6;
+  resize:     vertical;
+}
+
+select.bam-input {
+  appearance:          none;
+  -webkit-appearance:  none;
+  background-image:    linear-gradient(45deg, transparent 50%, var(--bam-cream-40) 50%),
+                       linear-gradient(135deg, var(--bam-cream-40) 50%, transparent 50%);
+  background-position: calc(100% - 18px) 55%, calc(100% - 12px) 55%;
+  background-size:     6px 6px, 6px 6px;
+  background-repeat:   no-repeat;
+  padding-right:       2.5rem;
+}
+
+/* Two-up field grid; collapses on narrow viewports. */
+.bam-form-grid {
+  display:               grid;
+  grid-template-columns: 1fr 1fr;
+  gap:                   0 var(--bam-space-lg);
+}
+
+@media (max-width: 640px) {
+  .bam-form-grid { grid-template-columns: 1fr; }
+}
+
+/* Compact ghost button for inline row actions (status transitions, deletes). */
+.bam-btn-sm {
+  font-family:     var(--bam-font-mono);
+  font-size:       var(--bam-t-micro);
+  font-weight:     400;
+  text-transform:  uppercase;
+  letter-spacing:  0.15em;
+  color:           var(--bam-cream-60);
+  background:      transparent;
+  border:          1px solid var(--bam-border);
+  border-radius:   0;
+  padding:         0.5rem 1rem;
+  cursor:          pointer;
+  transition:      border-color 0.2s ease, color 0.2s ease;
+}
+
+.bam-btn-sm:hover {
+  border-color: rgba(240, 235, 225, 0.35);
+  color:        var(--bam-cream-80);
+}
+
+/* The one red action: clearing/dropping is neutral, but a destructive delete
+   borrows the reserved accent as a border only — not a fill — to stay honest. */
+.bam-btn-sm--danger        { color: var(--bam-red); border-color: rgba(200, 0, 60, 0.35); }
+.bam-btn-sm--danger:hover  { border-color: var(--bam-red); color: var(--bam-red); }
+
+/* Vertical disclosure timeline: a ruled left rail with a node per event. */
+.bam-timeline {
+  list-style:  none;
+  margin:      0;
+  padding:     0;
+  border-left: 1px solid var(--bam-border);
+}
+
+.bam-timeline-item {
+  position:      relative;
+  padding:       0 0 var(--bam-space-lg) var(--bam-space-lg);
+}
+
+.bam-timeline-item::before {
+  content:       "";
+  position:      absolute;
+  left:          -4px;
+  top:           0.4rem;
+  width:         7px;
+  height:        7px;
+  border-radius: 50%;
+  background:    var(--bam-cream-40);
+}
+
+/* A published event is the terminal, public-facing beat — mark it in accent. */
+.bam-timeline-item--published::before { background: var(--bam-red); }
+
+.bam-timeline-when {
+  font-family:    var(--bam-font-mono);
+  font-size:      var(--bam-t-micro);
+  text-transform: uppercase;
+  letter-spacing: 0.15em;
+  color:          var(--bam-cream-40);
+}
+
+.bam-timeline-what {
+  font-family: var(--bam-font-serif);
+  font-size:   1.1rem;
+  color:       var(--bam-cream);
+  margin:      0.15rem 0;
+}
+
+.bam-timeline-note {
+  font-family: var(--bam-font-mono);
+  font-size:   0.8rem;
+  color:       var(--bam-cream-60);
+  line-height: 1.6;
+}

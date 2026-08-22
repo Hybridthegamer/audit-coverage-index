@@ -7,6 +7,8 @@ import {
   auditDeployments,
   audits,
   deployments,
+  disclosureEvents,
+  findings,
   protocols,
   queueItems,
   upgradeEvents,
@@ -26,10 +28,11 @@ import { computePriority } from "@/lib/priority";
         see unpublished protocols — the ones the public index hides. `archived`
         is still excluded; an archived target is retired from the workspace too.
 
-     2. It MAY read the private queue_items table. It does not, in this build,
-        touch findings, disclosure_events, leads, or outreach_events — those are
-        step 5 (findings editor + disclosure timeline). Adding one of those
-        imports is a step-5 change, not a refactor.
+     2. It MAY read the private queue_items, findings, and disclosure_events
+        tables (findings editor + disclosure timeline landed in step 5). It
+        still does NOT touch leads or outreach_events — the commercial pipeline
+        is a separate concern; adding one of those imports is a new decision,
+        not a refactor. Nothing here is ever reachable from a public route.
 
    priority_score is computed here at query time via lib/priority.ts and never
    stored (CLAUDE.md: "a separate, query-time computation, not a stored column").
@@ -388,5 +391,139 @@ export async function getTarget(deploymentId: number): Promise<TargetDetail | nu
     audits: auditRows,
     upgrades: upgradeRows,
     queueItem: (queueRow as TargetQueueItem | undefined) ?? null,
+  };
+}
+
+/* ─── Findings + disclosure (step 5) ───────────────────────────────────────
+   Private, per-deployment. Reachable only through the authenticated workspace;
+   the public surface (db/queries/public.ts) still never imports these tables. */
+
+export interface FindingSummary {
+  id: number;
+  title: string;
+  severity: string | null;
+  status: string;
+  immunefiClass: string | null;
+  fundsAtRiskUsd: number | null;
+  inPostAuditCode: boolean;
+  disclosureCount: number;
+  createdAt: Date;
+}
+
+/** Every finding filed against one deployment, newest first, with event counts. */
+export async function getFindingsForDeployment(
+  deploymentId: number,
+): Promise<FindingSummary[]> {
+  const rows = await db
+    .select({
+      id: findings.id,
+      title: findings.title,
+      severity: findings.severity,
+      status: findings.status,
+      immunefiClass: findings.immunefiClass,
+      fundsAtRiskUsd: findings.fundsAtRiskUsd,
+      inPostAuditCode: findings.inPostAuditCode,
+      createdAt: findings.createdAt,
+      disclosureCount: sql<number>`(
+        select count(*)::int from ${disclosureEvents}
+        where ${disclosureEvents.findingId} = ${findings.id}
+      )`,
+    })
+    .from(findings)
+    .where(eq(findings.deploymentId, deploymentId))
+    .orderBy(desc(findings.createdAt));
+
+  return rows.map((r) => ({ ...r, fundsAtRiskUsd: toNumber(r.fundsAtRiskUsd) }));
+}
+
+export interface DisclosureEvent {
+  id: number;
+  eventType: string;
+  occurredAt: Date;
+  channel: string | null;
+  note: string | null;
+}
+
+export interface FindingDetail {
+  id: number;
+  deploymentId: number;
+  protocolName: string;
+  protocolSlug: string;
+  deploymentLabel: string | null;
+  chain: string;
+  addressOrProgramId: string;
+  title: string;
+  severity: string | null;
+  immunefiClass: string | null;
+  fundsAtRiskUsd: number | null;
+  status: string;
+  summary: string | null;
+  rootCause: string | null;
+  attackPath: string | null;
+  preconditions: string | null;
+  impact: string | null;
+  recommendedFix: string | null;
+  /** Pointer only (repo URL / gist id / local path). Never runnable code. */
+  pocRef: string | null;
+  inPostAuditCode: boolean;
+  createdAt: Date;
+  disclosureEvents: DisclosureEvent[];
+}
+
+/**
+ * One finding with its deployment/protocol context and full disclosure
+ * timeline. Returns null for an unknown id (the page 404s). `poc_ref` is the
+ * only PoC field there is — a string pointer; runnable exploits never live in
+ * this database (CLAUDE.md hard constraint).
+ */
+export async function getFinding(findingId: number): Promise<FindingDetail | null> {
+  const [row] = await db
+    .select({
+      id: findings.id,
+      deploymentId: findings.deploymentId,
+      protocolName: protocols.name,
+      protocolSlug: protocols.slug,
+      deploymentLabel: deployments.label,
+      chain: deployments.chain,
+      addressOrProgramId: deployments.addressOrProgramId,
+      title: findings.title,
+      severity: findings.severity,
+      immunefiClass: findings.immunefiClass,
+      fundsAtRiskUsd: findings.fundsAtRiskUsd,
+      status: findings.status,
+      summary: findings.summary,
+      rootCause: findings.rootCause,
+      attackPath: findings.attackPath,
+      preconditions: findings.preconditions,
+      impact: findings.impact,
+      recommendedFix: findings.recommendedFix,
+      pocRef: findings.pocRef,
+      inPostAuditCode: findings.inPostAuditCode,
+      createdAt: findings.createdAt,
+    })
+    .from(findings)
+    .innerJoin(deployments, eq(findings.deploymentId, deployments.id))
+    .innerJoin(protocols, eq(deployments.protocolId, protocols.id))
+    .where(eq(findings.id, findingId))
+    .limit(1);
+
+  if (!row) return null;
+
+  const events = await db
+    .select({
+      id: disclosureEvents.id,
+      eventType: disclosureEvents.eventType,
+      occurredAt: disclosureEvents.occurredAt,
+      channel: disclosureEvents.channel,
+      note: disclosureEvents.note,
+    })
+    .from(disclosureEvents)
+    .where(eq(disclosureEvents.findingId, findingId))
+    .orderBy(desc(disclosureEvents.occurredAt), desc(disclosureEvents.id));
+
+  return {
+    ...row,
+    fundsAtRiskUsd: toNumber(row.fundsAtRiskUsd),
+    disclosureEvents: events,
   };
 }

@@ -43,7 +43,10 @@ Edit the schema, generate, then apply — never hand-edit generated SQL.
 - [x] 4. Auth, middleware, `/workspace` queue + target detail (done). Single-user
       cookie gate, private query surface, priority-ranked queue, read-only target
       detail. Queue mutations + findings/disclosure are step 5.
-- [ ] 5. Ingest modules, findings editor, disclosure timeline  ← NEXT
+- [x] 5. Ingest modules, findings editor, disclosure timeline (done). Recompute
+      pipeline (`lib/ingest.ts`) + CLI (`npm run db:ingest`) + in-app action with
+      public revalidation; findings CRUD; disclosure timeline; queue transitions;
+      publish toggle. All five build steps complete.
 
 ## Locked constraints from step 1
 
@@ -122,6 +125,39 @@ Edit the schema, generate, then apply — never hand-edit generated SQL.
 - **Step 4 is read-only** beyond auth. Queue transitions (queue/start/clear/
   drop) and the findings editor are step 5; target detail deliberately does not
   read the findings or disclosure_events tables.
+
+## Locked constraints from step 5
+
+- **Ingest lives in `lib/ingest.ts` and takes the `db` as an argument** — it
+  imports no client (mirrors `db/seed.ts`), so the CLI (`scripts/ingest.ts`,
+  `npm run db:ingest`) and the in-app `runIngestAction` share it. `recomputeDrift`
+  calls the pure `computeDrift`; git ancestry stays out of the pure function
+  (`resolveGitAncestry` shells `git merge-base --is-ancestor`). `recomputeDrift`
+  trusts the `audit_deployments` link as recorded ancestry.
+- **revalidation is the ingest/publish job.** The CLI cannot call
+  `revalidatePath` (no request context); the in-app `runIngestAction` and
+  `setPublished` do — that is why they exist. `setPublished` revalidates `/`,
+  `/coverage`, `/protocols/[slug]`; ingest also uses `revalidatePath('/protocols/[slug]','page')`.
+  This is the step-3 "unpublishing is delayed unless you revalidate" fix.
+- **Auth cookie writes are route handlers, not server actions.** `cookies().set`
+  inside a server action throws "cookies was called outside a request scope" in
+  this Next build (verified). Login/logout are `app/workspace/auth/route.ts` and
+  `.../logout/route.ts`, setting the cookie on the `NextResponse`. Middleware
+  exempts BOTH `/workspace/login` and `/workspace/auth`. Do not "simplify" these
+  back into server actions.
+- **Token signing is split by runtime.** `lib/auth.ts` stays edge-safe (WebCrypto
+  verify, for middleware); `lib/auth-node.ts` signs synchronously with
+  `node:crypto` (for the Node route handler). Both are HMAC-SHA256 over the same
+  message + secret, so an edge verify accepts a node-signed token. Never import
+  `node:crypto` into `lib/auth.ts` — it breaks the edge middleware bundle.
+- **Private mutations (`app/workspace/mutations.ts`) use `revalidatePath` +
+  `redirect` only** — never `cookies()` — so they are safe as server actions.
+  `db/queries/workspace.ts` now also reads findings + disclosure_events; it still
+  never touches leads or outreach_events.
+- **No `poc_code`, still.** The findings editor exposes `poc_ref` (a string
+  pointer) and no code field. Do not add one.
+- **`vitest.config.ts` aliases `@`** so tests can value-import `@/db/schema`
+  (e.g. `lib/ingest.test.ts`). Keep it in sync with tsconfig `paths`.
 
 ## Hard constraints
 

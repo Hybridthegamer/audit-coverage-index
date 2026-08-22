@@ -3,6 +3,7 @@ import Link from "next/link";
 import { Reveal } from "@/components/Reveal";
 import { StateMarker } from "@/components/StateMarker";
 import { WorkspaceNav } from "@/components/WorkspaceNav";
+import { runIngestAction } from "@/app/workspace/mutations";
 import { getQueue, summarizeQueue } from "@/db/queries/workspace";
 import {
   chainLabel,
@@ -56,6 +57,14 @@ export default async function QueuePage() {
               Open targets lead; cleared and dropped ones settle to the bottom.
               Priority is a private research heuristic, not a published score.
             </p>
+
+            {/* Ingest: recompute drift for every deployment and top up the
+                candidate queue, then revalidate the public pages. */}
+            <form action={runIngestAction} style={{ marginTop: "var(--bam-space-lg)" }}>
+              <button type="submit" className="bam-btn-sm">
+                Run ingest
+              </button>
+            </form>
           </Reveal>
         </section>
 

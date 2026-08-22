@@ -5,12 +5,18 @@ import { notFound } from "next/navigation";
 import { Reveal } from "@/components/Reveal";
 import { StateMarker } from "@/components/StateMarker";
 import { WorkspaceNav } from "@/components/WorkspaceNav";
-import { getTarget } from "@/db/queries/workspace";
+import {
+  saveResearchLog,
+  setPublished,
+  transitionQueue,
+} from "@/app/workspace/mutations";
+import { getFindingsForDeployment, getTarget } from "@/db/queries/workspace";
 import {
   COVERAGE_LABEL,
   COVERAGE_MEANING,
   EMPTY,
   chainLabel,
+  findingStatusLabel,
   formatDate,
   formatDateTime,
   formatDrift,
@@ -18,6 +24,13 @@ import {
   queueStatusLabel,
   shortCommit,
 } from "@/lib/format";
+
+const QUEUE_TRANSITIONS: { status: string; label: string }[] = [
+  { status: "queued", label: "Queue" },
+  { status: "in_review", label: "Start review" },
+  { status: "finding_found", label: "Finding found" },
+  { status: "dropped", label: "Drop" },
+];
 
 /**
  * One target's private record, keyed by deployment id. It shows the researcher
@@ -79,7 +92,10 @@ export default async function TargetPage({
   const deploymentId = Number(id);
   if (!Number.isInteger(deploymentId) || deploymentId <= 0) notFound();
 
-  const target = await getTarget(deploymentId);
+  const [target, findings] = await Promise.all([
+    getTarget(deploymentId),
+    getFindingsForDeployment(deploymentId),
+  ]);
   if (!target) notFound();
 
   return (
@@ -139,6 +155,20 @@ export default async function TargetPage({
               >
                 {COVERAGE_MEANING[target.coverageState]}
               </p>
+
+              {/* Publish toggle — flips public visibility and revalidates the
+                  public ISR pages immediately (see setPublished). */}
+              <form action={setPublished} style={{ marginTop: "var(--bam-space-md)" }}>
+                <input type="hidden" name="deploymentId" value={target.deploymentId} />
+                <input
+                  type="hidden"
+                  name="isPublished"
+                  value={target.isPublished ? "false" : "true"}
+                />
+                <button type="submit" className="bam-btn-sm">
+                  {target.isPublished ? "Unpublish protocol" : "Publish protocol"}
+                </button>
+              </form>
             </Reveal>
 
             {/* ─── Deployment ────────────────────────────────────────── */}
@@ -338,15 +368,13 @@ export default async function TargetPage({
             {/* ─── Queue item ────────────────────────────────────────── */}
             <Reveal>
               <SectionTitle>Research queue</SectionTitle>
-              {target.queueItem ? (
-                <>
-                  <div className="bam-data-list">
-                    <Row label="Status">
-                      {queueStatusLabel(target.queueItem.status)}
-                    </Row>
-                    <Row label="Manual priority">
-                      {target.queueItem.priority ?? EMPTY}
-                    </Row>
+
+              <div className="bam-data-list">
+                <Row label="Status">
+                  {queueStatusLabel(target.queueItem?.status ?? null)}
+                </Row>
+                {target.queueItem ? (
+                  <>
                     <Row label="Queued">
                       {formatDate(target.queueItem.queuedAt)}
                     </Row>
@@ -361,51 +389,165 @@ export default async function TargetPage({
                         {target.queueItem.clearReason}
                       </Row>
                     ) : null}
-                  </div>
-                  {target.queueItem.researchLog ? (
-                    <div style={{ marginTop: "var(--bam-space-lg)" }}>
-                      <p className="bam-data-key" style={{ marginBottom: "var(--bam-space-sm)" }}>
-                        Research log
-                      </p>
-                      <pre
-                        style={{
-                          fontFamily: "var(--bam-font-mono)",
-                          fontSize: "0.8rem",
-                          color: "var(--bam-cream-60)",
-                          lineHeight: 1.7,
-                          whiteSpace: "pre-wrap",
-                          background: "var(--bam-surface-2)",
-                          border: "1px solid var(--bam-border)",
-                          padding: "var(--bam-space-lg)",
-                          overflowX: "auto",
-                        }}
-                      >
-                        {target.queueItem.researchLog}
-                      </pre>
-                    </div>
-                  ) : null}
-                </>
-              ) : (
-                <p className="bam-body">
-                  Not queued. This target has no queue item yet — the ingest
-                  worker (step 5) creates candidates, and queue transitions land
-                  with it.
-                </p>
-              )}
+                  </>
+                ) : null}
+              </div>
+
+              {/* Status transitions */}
+              <div
+                style={{
+                  display: "flex",
+                  gap: "var(--bam-space-sm)",
+                  flexWrap: "wrap",
+                  marginTop: "var(--bam-space-lg)",
+                }}
+              >
+                {QUEUE_TRANSITIONS.map((t) => (
+                  <form action={transitionQueue} key={t.status}>
+                    <input type="hidden" name="deploymentId" value={target.deploymentId} />
+                    <input type="hidden" name="status" value={t.status} />
+                    <button
+                      type="submit"
+                      className="bam-btn-sm"
+                      disabled={target.queueItem?.status === t.status}
+                    >
+                      {t.label}
+                    </button>
+                  </form>
+                ))}
+              </div>
+
+              {/* Clear requires a reason (DB check constraint + this form). */}
+              <form
+                action={transitionQueue}
+                style={{ marginTop: "var(--bam-space-lg)" }}
+              >
+                <input type="hidden" name="deploymentId" value={target.deploymentId} />
+                <input type="hidden" name="status" value="cleared" />
+                <div className="bam-field">
+                  <label className="bam-label" htmlFor="clearReason">
+                    Clear reason (required to clear)
+                  </label>
+                  <input
+                    id="clearReason"
+                    name="clearReason"
+                    className="bam-input"
+                    placeholder="Why this target is cleared without a finding"
+                  />
+                </div>
+                <button type="submit" className="bam-btn-sm">
+                  Clear target
+                </button>
+              </form>
+
+              {/* Research log + manual priority editor */}
+              <form
+                action={saveResearchLog}
+                style={{ marginTop: "var(--bam-space-xl)" }}
+              >
+                <input type="hidden" name="deploymentId" value={target.deploymentId} />
+                <div className="bam-field">
+                  <label className="bam-label" htmlFor="priority">
+                    Manual priority (overrides the computed score in the queue)
+                  </label>
+                  <input
+                    id="priority"
+                    name="priority"
+                    type="number"
+                    className="bam-input"
+                    defaultValue={target.queueItem?.priority ?? ""}
+                    placeholder="e.g. 1"
+                  />
+                </div>
+                <div className="bam-field">
+                  <label className="bam-label" htmlFor="researchLog">
+                    Research log
+                  </label>
+                  <textarea
+                    id="researchLog"
+                    name="researchLog"
+                    className="bam-input"
+                    style={{ minHeight: "9rem" }}
+                    defaultValue={target.queueItem?.researchLog ?? ""}
+                    placeholder="Notes, diffs, links…"
+                  />
+                </div>
+                <button type="submit" className="bam-btn-primary">
+                  Save log
+                </button>
+              </form>
             </Reveal>
 
-            {/* ─── Findings placeholder (step 5) ─────────────────────── */}
+            {/* ─── Findings ──────────────────────────────────────────── */}
             <Reveal>
               <SectionTitle>Findings</SectionTitle>
-              <div className="bam-notice" style={{ borderColor: "var(--bam-border)", background: "var(--bam-cream-03)" }}>
-                <p className="bam-notice-label" style={{ color: "var(--bam-cream-40)" }}>
-                  Step 5
-                </p>
-                <p className="bam-notice-body">
-                  The findings editor and disclosure timeline are built in the
-                  next session. This view intentionally does not read the
-                  findings or disclosure_events tables.
-                </p>
+
+              {findings.length === 0 ? (
+                <p className="bam-body">No findings filed against this target yet.</p>
+              ) : (
+                <div
+                  style={{
+                    display: "flex",
+                    flexDirection: "column",
+                    gap: "var(--bam-space-sm)",
+                  }}
+                >
+                  {findings.map((f) => (
+                    <Link
+                      key={f.id}
+                      href={`/workspace/findings/${f.id}`}
+                      className="bam-card"
+                      style={{
+                        textDecoration: "none",
+                        display: "flex",
+                        justifyContent: "space-between",
+                        alignItems: "baseline",
+                        gap: "var(--bam-space-md)",
+                        flexWrap: "wrap",
+                      }}
+                    >
+                      <span
+                        style={{
+                          fontFamily: "var(--bam-font-serif)",
+                          fontSize: "1.1rem",
+                          color: "var(--bam-cream)",
+                        }}
+                      >
+                        {f.title}
+                      </span>
+                      <span
+                        style={{
+                          display: "inline-flex",
+                          gap: "var(--bam-space-sm)",
+                          alignItems: "baseline",
+                          fontSize: "var(--bam-t-micro)",
+                          color: "var(--bam-cream-40)",
+                          textTransform: "uppercase",
+                          letterSpacing: "0.12em",
+                        }}
+                      >
+                        {f.severity ? <span>{f.severity}</span> : null}
+                        <span>{findingStatusLabel(f.status)}</span>
+                        {f.inPostAuditCode ? (
+                          <span style={{ color: "var(--bam-red)" }}>post-audit</span>
+                        ) : null}
+                        <span>
+                          {f.disclosureCount}{" "}
+                          {f.disclosureCount === 1 ? "event" : "events"}
+                        </span>
+                      </span>
+                    </Link>
+                  ))}
+                </div>
+              )}
+
+              <div style={{ marginTop: "var(--bam-space-lg)" }}>
+                <Link
+                  href={`/workspace/targets/${target.deploymentId}/findings/new`}
+                  className="bam-btn-ghost"
+                >
+                  New finding
+                </Link>
               </div>
 
               {target.isPublished ? (
