@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, isNull, sql } from "drizzle-orm";
+import { and, desc, eq, isNull, sql } from "drizzle-orm";
 import type { NeonHttpDatabase } from "drizzle-orm/neon-http";
 
 import * as schema from "@/db/schema";
@@ -109,8 +109,11 @@ export async function resolveDeploymentsOnChain(
     .from(schema.deployments)
     .innerJoin(schema.protocols, eq(schema.deployments.protocolId, schema.protocols.id))
     .where(and(...filters))
+    // NOT asc(sql`… nulls first`) — drizzle appends the direction, which yields
+    // `last_checked_at nulls first asc` and Postgres rejects it. The null
+    // ordering has to sit inside the raw fragment, after the direction.
     .orderBy(
-      asc(sql`${schema.deployments.lastCheckedAt} nulls first`),
+      sql`${schema.deployments.lastCheckedAt} asc nulls first`,
       desc(schema.protocols.tvlUsd),
     )
     .limit(Math.max(1, options.limit));
