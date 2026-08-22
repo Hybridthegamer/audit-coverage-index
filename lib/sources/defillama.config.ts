@@ -15,6 +15,7 @@ import { DEFAULT_FILTER, type CurationFilter } from "@/lib/sources/defillama";
  * comma-separated list had a stray space.
  *
  *   DEFILLAMA_MIN_TVL_USD       number, default 1000000
+ *   DEFILLAMA_MAX_TVL_USD       number, default 50000000; 0 = no ceiling
  *   DEFILLAMA_CATEGORIES        comma list, default all ("Dexs,Lending")
  *   DEFILLAMA_CHAINS            comma list, default all ("Ethereum,Base")
  *   DEFILLAMA_INCLUDE_INACTIVE  "true" keeps rugged/deprecated/dead rows
@@ -54,6 +55,7 @@ function parseBool(value: string | undefined, fallback: boolean): boolean {
 export function filterFromEnv(env: EnvBag): CurationFilter {
   return {
     minTvlUsd: parseNumber(env.DEFILLAMA_MIN_TVL_USD, DEFAULT_FILTER.minTvlUsd),
+    maxTvlUsd: parseNumber(env.DEFILLAMA_MAX_TVL_USD, DEFAULT_FILTER.maxTvlUsd),
     categories: parseList(env.DEFILLAMA_CATEGORIES),
     chains: parseList(env.DEFILLAMA_CHAINS),
     includeInactive: parseBool(

@@ -104,6 +104,8 @@ export interface SourcedProtocol {
 export interface CurationFilter {
   /** Floor in USD. Below it a protocol is not worth a week of review. */
   minTvlUsd: number;
+  /** Ceiling in USD. 0 = no ceiling. See DEFAULT_FILTER for why there is one. */
+  maxTvlUsd: number;
   /** Case-insensitive allowlist of DefiLlama categories; null = all. */
   categories: string[] | null;
   /** Case-insensitive allowlist of DefiLlama chain names; null = all. */
@@ -115,14 +117,26 @@ export interface CurationFilter {
 }
 
 /**
- * The agreed step-6 curation: everything at $1M TVL and up, every category,
- * every chain. Only dead projects are dropped — a rugged or deprecated
- * protocol has no live code worth reviewing and no team left to disclose to,
- * so it is noise in a hunting queue rather than a target. Set
+ * The agreed step-6 curation: a $1M–$50M TVL BAND, every category, every chain.
+ *
+ * The band is deliberate on both edges. The floor drops protocols too small to
+ * be worth a week of review. The ceiling drops the giants — at "all categories"
+ * the top of the list is centralised exchanges and blue chips (Binance CEX at
+ * $160B, Lido, Aave), which have standing audit relationships, in-house
+ * security teams, and a queue of researchers already on them. The band is where
+ * an unaudited protocol still holding real money actually lives.
+ *
+ * Both edges are env knobs (DEFILLAMA_MIN_TVL_USD / DEFILLAMA_MAX_TVL_USD, the
+ * latter 0 for no ceiling), so widening is a config change, not a deploy.
+ *
+ * Only dead projects are dropped beyond that — a rugged or deprecated protocol
+ * has no live code worth reviewing and no team left to disclose to, so it is
+ * noise in a hunting queue rather than a target. Set
  * DEFILLAMA_INCLUDE_INACTIVE=true to keep them.
  */
 export const DEFAULT_FILTER: CurationFilter = {
   minTvlUsd: 1_000_000,
+  maxTvlUsd: 50_000_000,
   categories: null,
   chains: null,
   includeInactive: false,
@@ -253,6 +267,7 @@ export function passesFilter(
 ): boolean {
   if (protocol.inactive && !filter.includeInactive) return false;
   if (protocol.tvlUsd === null || protocol.tvlUsd < filter.minTvlUsd) return false;
+  if (filter.maxTvlUsd > 0 && protocol.tvlUsd > filter.maxTvlUsd) return false;
 
   const categories = protocol.category === null ? [] : [protocol.category];
   if (!matchesAllowlist(categories, filter.categories)) return false;

@@ -3,7 +3,9 @@
 > **STATUS: BUILT.** This is the planning doc, kept for the reasoning. What
 > shipped is recorded in CLAUDE.md under "Locked constraints from step 6";
 > where the two disagree, CLAUDE.md is right. Answers to §9, as built:
-> min TVL $1M · all categories · all chains · `protocols.tvl_usd` added ·
+> TVL band $1M–$50M (the floor was the answer to §9.1; the $50M ceiling was
+> added straight after, to keep CEXes and blue chips out of the queue) ·
+> all categories · all chains · `protocols.tvl_usd` added ·
 > `audit_source` extended with `'defillama'` · the queue surfaces protocols
 > with no deployments (a second table, `getSourcedProtocols()`) · CLI is the
 > primary run path with a capped in-app button · sourced rows stay unpublished.

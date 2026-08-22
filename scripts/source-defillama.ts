@@ -52,6 +52,7 @@ async function main() {
   console.log("Curation filter:");
   console.table({
     minTvlUsd: filter.minTvlUsd,
+    maxTvlUsd: filter.maxTvlUsd === 0 ? "(no ceiling)" : filter.maxTvlUsd,
     categories: filter.categories?.join(", ") ?? "(all)",
     chains: filter.chains?.join(", ") ?? "(all)",
     includeInactive: filter.includeInactive,

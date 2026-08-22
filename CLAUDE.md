@@ -213,6 +213,15 @@ Edit the schema, generate, then apply — never hand-edit generated SQL.
   republish a retracted protocol or clobber a researcher's note. `github_repo`
   is fill-if-empty (the feed only knows the ORG page). Never add a key to that
   payload without deciding what a re-run does to hand-entered data.
+- **Narrowing the band does not retract what is already imported.** The dev
+  branch was first synced at a $1M floor with no ceiling (1,274 protocols); the
+  $50M ceiling landed after, so 359 above-band rows remain in `protocols`. That
+  is the "never delete" rule working as designed, not a bug — they are
+  unpublished and harmless, but they do sit at the top of the unpinned-protocol
+  table by TVL. To retire them without deleting (both query surfaces already
+  exclude archived rows):
+  `update protocols set archived = true where tvl_usd > 50000000;`
+  Decide this before step 7 pins contracts for a protocol you meant to drop.
 - **Sourcing is idempotent and additive, unlike `db/seed.ts`.** Upsert on
   `protocols.slug`, chunked `insert … on conflict do update` (200 rows a
   statement — per-row updates time out at ~1,300 records). A protocol that
@@ -234,15 +243,19 @@ Edit the schema, generate, then apply — never hand-edit generated SQL.
   for protocols with no deployments — none of `computePriority`'s inputs exist
   for them. Same rules as `priority_score`: pure, tested, written formula,
   computed at query time, never stored, never public, never a percentage.
-- **Curation thresholds live in the environment**, parsed by the pure
+- **Curation is a $1M–$50M TVL BAND, not just a floor.** Both edges are
+  deliberate: below the floor a protocol is not worth a week; above the ceiling
+  the list is CEXes and blue chips with standing audit relationships and their
+  own security teams. Thresholds live in the environment, parsed by the pure
   `filterFromEnv` (`lib/sources/defillama.config.ts`): `DEFILLAMA_MIN_TVL_USD`
-  (default $1M), `DEFILLAMA_CATEGORIES`, `DEFILLAMA_CHAINS`,
+  (default $1M), `DEFILLAMA_MAX_TVL_USD` (default $50M, `0` = no ceiling),
+  `DEFILLAMA_CATEGORIES`, `DEFILLAMA_CHAINS`,
   `DEFILLAMA_INCLUDE_INACTIVE`, `DEFILLAMA_MAX_PROTOCOLS`. All optional, all
   server-only — none may become `NEXT_PUBLIC_`; the curation policy is the shape
   of the private queue. Unparseable values fall back to the default rather than
   aborting a run. Rugged/deprecated/dead-link protocols are dropped by default.
-- **The CLI is the primary run path.** `npm run db:source` does the full ~1,300
-  protocol sync; the in-app "Sync DefiLlama" button is capped at
+- **The CLI is the primary run path.** `npm run db:source` does the full
+  in-band sync (~900 protocols); the in-app "Sync DefiLlama" button is capped at
   `IN_APP_SYNC_LIMIT` (150 by TVL) because an 8MB fetch plus 1,300 upserts is
   not a serverless request's job. The button exists because only it can call
   `revalidatePath` — same split as `db:ingest` vs `runIngestAction` in step 5.

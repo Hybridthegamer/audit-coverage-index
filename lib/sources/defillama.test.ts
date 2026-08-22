@@ -172,9 +172,20 @@ describe("passesFilter", () => {
   const at = (tvl: number | null, extra: Partial<RawLlamaProtocol> = {}) =>
     normalizeProtocol({ slug: "p", name: "P", tvl, category: "Dexs", chains: ["Base"], ...extra })!;
 
-  it("applies the $1M floor from DEFAULT_FILTER", () => {
+  it("applies the $1M–$50M band from DEFAULT_FILTER at both edges", () => {
     expect(passesFilter(at(999_999))).toBe(false);
     expect(passesFilter(at(1_000_000))).toBe(true);
+    expect(passesFilter(at(50_000_000))).toBe(true);
+    // Blue chips and CEXes sit above the ceiling on purpose.
+    expect(passesFilter(at(50_000_001))).toBe(false);
+    expect(passesFilter(at(160_000_000_000))).toBe(false);
+  });
+
+  it("treats maxTvlUsd 0 as no ceiling", () => {
+    const uncapped: CurationFilter = { ...DEFAULT_FILTER, maxTvlUsd: 0 };
+    expect(passesFilter(at(160_000_000_000), uncapped)).toBe(true);
+    // The floor still applies with the ceiling lifted.
+    expect(passesFilter(at(999_999), uncapped)).toBe(false);
   });
 
   it("rejects an unknown TVL — an unrankable row is not curated", () => {
@@ -203,8 +214,11 @@ describe("passesFilter", () => {
 });
 
 describe("selectProtocols", () => {
+  /** The band is the default; lift it when a test is about something else. */
+  const uncapped: CurationFilter = { ...DEFAULT_FILTER, maxTvlUsd: 0 };
+
   it("curates the fixture to the live, funded, usable rows only", () => {
-    const selected = selectProtocols(FIXTURE);
+    const selected = selectProtocols(FIXTURE, uncapped);
     expect(selected.map((p) => p.slug)).toEqual([
       "lido", // $23B
       "aerodrome-slipstream", // $132M
@@ -213,8 +227,17 @@ describe("selectProtocols", () => {
     ]);
   });
 
+  it("keeps only the $1M–$50M band by default", () => {
+    // Lido ($23B) and Slipstream ($132M) are above the ceiling; Dust ($12K)
+    // is below the floor.
+    expect(selectProtocols(FIXTURE).map((p) => p.slug)).toEqual([
+      "fresh-yield", // $42M
+      "messy", // $3M
+    ]);
+  });
+
   it("ranks by TVL descending so a cap keeps the biggest, not the first listed", () => {
-    const selected = selectProtocols(FIXTURE, { ...DEFAULT_FILTER, maxProtocols: 2 });
+    const selected = selectProtocols(FIXTURE, { ...uncapped, maxProtocols: 2 });
     expect(selected.map((p) => p.slug)).toEqual(["lido", "aerodrome-slipstream"]);
   });
 
@@ -254,8 +277,8 @@ describe("fetchProtocols", () => {
 
     expect(seenUrl).toBe("https://api.llama.fi/protocols");
     expect(seenUa).toContain("audit-coverage-index");
-    expect(records.map((p) => p.slug)).toContain("lido");
-    expect(records.map((p) => p.slug)).not.toContain("rugged-one");
+    // The band applies to the fetched set, not only to selectProtocols.
+    expect(records.map((p) => p.slug)).toEqual(["fresh-yield", "messy"]);
   });
 
   it("throws on a non-2xx response instead of importing nothing silently", async () => {
@@ -284,6 +307,7 @@ describe("filterFromEnv", () => {
     expect(
       filterFromEnv({
         DEFILLAMA_MIN_TVL_USD: "5_000_000",
+        DEFILLAMA_MAX_TVL_USD: "0",
         DEFILLAMA_CATEGORIES: "Dexs, Lending ,",
         DEFILLAMA_CHAINS: "Ethereum",
         DEFILLAMA_INCLUDE_INACTIVE: "true",
@@ -291,11 +315,20 @@ describe("filterFromEnv", () => {
       }),
     ).toEqual({
       minTvlUsd: 5_000_000,
+      maxTvlUsd: 0,
       categories: ["Dexs", "Lending"],
       chains: ["Ethereum"],
       includeInactive: true,
       maxProtocols: 250,
     });
+  });
+
+  it("keeps the $50M ceiling unless the environment lifts it", () => {
+    expect(filterFromEnv({}).maxTvlUsd).toBe(50_000_000);
+    expect(filterFromEnv({ DEFILLAMA_MAX_TVL_USD: "0" }).maxTvlUsd).toBe(0);
+    expect(filterFromEnv({ DEFILLAMA_MAX_TVL_USD: "250000000" }).maxTvlUsd).toBe(
+      250_000_000,
+    );
   });
 
   it("ignores unparseable values rather than aborting a sourcing run", () => {

@@ -48,8 +48,8 @@ npx tsc --noEmit      # strict typecheck
 ## Sourcing (step 6)
 
 `npm run db:source` pulls `https://api.llama.fi/protocols` (free, no key),
-curates it, and upserts the result. At the default $1M TVL floor that is ~1,300
-protocols out of ~8,100, roughly half of them with no audit on record.
+curates it, and upserts the result. At the default $1M–$50M TVL band that is
+~900 protocols out of ~8,100, most of them with no audit on record.
 
 It is **idempotent and additive** — the opposite of `db:seed`. It upserts on
 `protocols.slug`, never deletes, and writes only the columns it sourced: a
@@ -61,11 +61,18 @@ Curation thresholds are environment variables, all optional:
 
 ```
 DEFILLAMA_MIN_TVL_USD=1000000     # floor; default 1000000
+DEFILLAMA_MAX_TVL_USD=50000000    # ceiling; default 50000000, 0 = none
 DEFILLAMA_CATEGORIES=Dexs,Lending # allowlist; default all
 DEFILLAMA_CHAINS=Ethereum,Base    # allowlist; default all
 DEFILLAMA_INCLUDE_INACTIVE=false  # keep rugged/deprecated/dead rows
 DEFILLAMA_MAX_PROTOCOLS=0         # 0 = no cap
 ```
+
+The ceiling is as deliberate as the floor: above ~$50M the list is centralised
+exchanges and blue chips with standing audit relationships, in-house security
+teams, and a queue of researchers already on them. The band is where an
+unaudited protocol still holding real money actually lives. Lift it with
+`DEFILLAMA_MAX_TVL_USD=0`.
 
 **What DefiLlama can and cannot answer.** It tells you a protocol exists, what
 it holds, and whether anybody audited it — the curation layer. It does not give
