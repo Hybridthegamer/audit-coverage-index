@@ -213,15 +213,21 @@ Edit the schema, generate, then apply — never hand-edit generated SQL.
   republish a retracted protocol or clobber a researcher's note. `github_repo`
   is fill-if-empty (the feed only knows the ORG page). Never add a key to that
   payload without deciding what a re-run does to hand-entered data.
-- **Narrowing the band does not retract what is already imported.** The dev
-  branch was first synced at a $1M floor with no ceiling (1,274 protocols); the
-  $50M ceiling landed after, so 359 above-band rows remain in `protocols`. That
-  is the "never delete" rule working as designed, not a bug — they are
-  unpublished and harmless, but they do sit at the top of the unpinned-protocol
-  table by TVL. To retire them without deleting (both query surfaces already
-  exclude archived rows):
+- **Narrowing the band does not retract what is already imported** — the sync
+  never deletes, so tightening a threshold leaves the old rows behind. This
+  already happened once: the dev branch was first synced at a $1M floor with no
+  ceiling (1,274 protocols), the $50M ceiling landed after, and the 359
+  above-band rows were retired on 2026-08-22 with
   `update protocols set archived = true where tvl_usd > 50000000;`
-  Decide this before step 7 pins contracts for a protocol you meant to drop.
+  (none were published, none had deployments). Both query surfaces exclude
+  archived rows, so the workspace now shows the 915 in-band protocols.
+  Archiving, not deleting, is the retirement mechanism — a deleted protocol
+  takes any private findings with it.
+  Two consequences to know: a re-run of `db:source` does NOT resurrect an
+  archived row (`archived` is not in the write payload — verified), and by the
+  same token a protocol that later falls back INTO the band stays archived
+  until someone flips it back by hand. That is deliberate: archiving is a
+  researcher decision, and the sync does not get to overrule it.
 - **Sourcing is idempotent and additive, unlike `db/seed.ts`.** Upsert on
   `protocols.slug`, chunked `insert … on conflict do update` (200 rows a
   statement — per-row updates time out at ~1,300 records). A protocol that
