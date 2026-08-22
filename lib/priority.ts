@@ -77,3 +77,57 @@ export function computePriority(input: PriorityInput): number {
 
   return Math.round(score);
 }
+
+/* ------------------------------------------------------------------ *
+ * Protocol-level priority (build step 6)
+ * ------------------------------------------------------------------ */
+
+/**
+ * Whether a protocol has any audit on record at all. The curation-layer
+ * signal DefiLlama can actually answer — as opposed to coverage_state, which
+ * asks the much harder commit-level question and needs step 7's on-chain data.
+ */
+export type AuditStatus = "audited" | "unaudited";
+
+export interface ProtocolPriorityInput {
+  auditStatus: AuditStatus;
+  tvlUsd: number | null;
+  hasBounty: boolean;
+}
+
+/**
+ * protocol_priority — the ranking for sourced protocols that have no
+ * deployments pinned yet.
+ *
+ * A separate formula from computePriority above, because a bare protocol has
+ * none of that function's inputs: no coverage_state (nothing deployed is
+ * recorded), no drift days, no upgradeability. Ranking it through the
+ * deployment formula would mean feeding it `unknown` and nulls and getting a
+ * flat 12 + TVL for every row — an ordering that says nothing. So:
+ *
+ *   score = auditBase + tvlComponent + bountyBonus
+ *
+ *   auditBase        unaudited 40 · audited 10
+ *                    (an unaudited protocol holding real money is the single
+ *                     strongest signal this data source can produce)
+ *   tvlComponent     0..30, the same log10 curve computePriority uses, so the
+ *                    two rankings weigh money identically
+ *   bountyBonus      +8 when the protocol runs a bug bounty (a disclosure path
+ *                    and a payout), same weight as the deployment formula
+ *
+ * Range is 0..78. Like priority_score it is computed at query time, never
+ * stored, never public, and it is an ordering rather than a percentage.
+ */
+const AUDIT_BASE: Record<AuditStatus, number> = {
+  unaudited: 40,
+  audited: 10,
+};
+
+export function computeProtocolPriority(input: ProtocolPriorityInput): number {
+  const score =
+    AUDIT_BASE[input.auditStatus] +
+    tvlComponent(input.tvlUsd) +
+    (input.hasBounty ? BOUNTY_BONUS : 0);
+
+  return Math.round(score);
+}

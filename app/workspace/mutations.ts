@@ -12,7 +12,9 @@ import {
   protocols,
   queueItems,
 } from "@/db/schema";
-import { runIngest } from "@/lib/ingest";
+import { runIngest, syncFromDefiLlama } from "@/lib/ingest";
+import { fetchProtocols } from "@/lib/sources/defillama";
+import { filterFromEnv, IN_APP_SYNC_LIMIT } from "@/lib/sources/defillama.config";
 
 /* ═══════════════════════════════════════════════════════════════════════════
    PRIVATE MUTATIONS (build step 5).
@@ -332,6 +334,36 @@ export async function setPublished(fd: FormData): Promise<void> {
  * same recompute but cannot revalidate — that is the reason this action exists.
  */
 export async function runIngestAction(): Promise<void> {
+  await runIngest(db);
+
+  revalidatePath("/");
+  revalidatePath("/coverage");
+  revalidatePath("/protocols/[slug]", "page");
+  revalidatePath("/workspace");
+  redirect("/workspace");
+}
+
+/* ─── Sourcing (step 6) ─────────────────────────────────────────────────── */
+
+/**
+ * Pull the top slice of the curated DefiLlama set and upsert it, then recompute
+ * drift and revalidate.
+ *
+ * Capped at IN_APP_SYNC_LIMIT protocols on purpose. `npm run db:source` is the
+ * primary run path — a full $1M-floor sync is ~1,300 protocols and an 8MB fetch,
+ * which is not a serverless request's job. This button is the quick
+ * top-of-market refresh from inside the app, and it is the variant that can
+ * call revalidatePath().
+ *
+ * Everything it writes lands unpublished (the sync never touches is_published),
+ * so no public page gains a row from this — but a sourced audit marker can move
+ * an existing deployment's coverage, hence the public revalidation.
+ */
+export async function syncDefiLlamaAction(): Promise<void> {
+  const filter = { ...filterFromEnv(process.env), maxProtocols: IN_APP_SYNC_LIMIT };
+  const records = await fetchProtocols(filter);
+
+  await syncFromDefiLlama(db, records);
   await runIngest(db);
 
   revalidatePath("/");

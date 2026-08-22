@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 
-import { computePriority, type PriorityInput } from "./priority";
+import {
+  computePriority,
+  computeProtocolPriority,
+  type PriorityInput,
+} from "./priority";
 
 const base: PriorityInput = {
   coverageState: "current",
@@ -64,5 +68,66 @@ describe("computePriority", () => {
     });
     // 50 + 30 + 20 + 8 + 5 = 113
     expect(score).toBe(113);
+  });
+});
+
+/* ── Protocol-level priority (build step 6) ──────────────────────────────
+   The ranking for sourced protocols that have no deployments pinned yet, so
+   none of computePriority's inputs exist. Separate formula, separate range. */
+
+describe("computeProtocolPriority", () => {
+  it("ranks an unaudited protocol above an identical audited one", () => {
+    const unaudited = computeProtocolPriority({
+      auditStatus: "unaudited",
+      tvlUsd: 50_000_000,
+      hasBounty: false,
+    });
+    const audited = computeProtocolPriority({
+      auditStatus: "audited",
+      tvlUsd: 50_000_000,
+      hasBounty: false,
+    });
+    expect(unaudited).toBeGreaterThan(audited);
+    expect(unaudited - audited).toBe(30); // the audit base gap, 40 vs 10
+  });
+
+  it("weighs money on the same log curve as the deployment formula", () => {
+    // Both formulas award the identical 0..30 tvlComponent, so a protocol and
+    // a deployment holding the same money are ranked by the same money term.
+    const protocolTvlTerm =
+      computeProtocolPriority({
+        auditStatus: "audited",
+        tvlUsd: 1_000_000_000,
+        hasBounty: false,
+      }) - 10;
+    const deploymentTvlTerm = computePriority({
+      coverageState: "current",
+      tvlUsd: 1_000_000_000,
+      driftDays: null,
+      hasBounty: false,
+      isUpgradeable: false,
+    });
+    expect(protocolTvlTerm).toBe(30);
+    expect(deploymentTvlTerm).toBe(30);
+  });
+
+  it("scores an unknown TVL as zero money rather than guessing", () => {
+    expect(
+      computeProtocolPriority({
+        auditStatus: "audited",
+        tvlUsd: null,
+        hasBounty: false,
+      }),
+    ).toBe(10);
+  });
+
+  it("tops out at 78 — an unaudited billion-dollar protocol with a bounty", () => {
+    expect(
+      computeProtocolPriority({
+        auditStatus: "unaudited",
+        tvlUsd: 5_000_000_000,
+        hasBounty: true,
+      }),
+    ).toBe(78); // 40 + 30 + 8
   });
 });

@@ -14,7 +14,11 @@ import {
   upgradeEvents,
 } from "@/db/schema";
 import type { CoverageState } from "@/lib/drift";
-import { computePriority } from "@/lib/priority";
+import {
+  computePriority,
+  computeProtocolPriority,
+  type AuditStatus,
+} from "@/lib/priority";
 
 /* ═══════════════════════════════════════════════════════════════════════════
    PRIVATE QUERY SURFACE — the workspace counterpart to db/queries/public.ts.
@@ -55,6 +59,18 @@ function toNumber(value: string | null): number | null {
   return Number.isFinite(n) ? n : null;
 }
 
+/**
+ * The curation-layer signal (step 6): does this protocol have ANY audit on
+ * record? Derived at query time from the audits table — deliberately not a
+ * stored column, and deliberately not conflated with coverage_state. "Audited"
+ * here means only "somebody reviewed this project at some point"; whether the
+ * currently deployed code is what they reviewed is the harder question that
+ * coverage_state answers, and it stays `unknown` until step 7 pins commits.
+ */
+const auditStatusSql = sql<AuditStatus>`case when exists (
+    select 1 from ${audits} where ${audits.protocolId} = ${protocols.id}
+  ) then 'audited' else 'unaudited' end`;
+
 export type QueueStatus =
   | "candidate"
   | "queued"
@@ -74,6 +90,8 @@ export interface QueueRow {
   tvlUsd: number | null;
   isUpgradeable: boolean;
   hasBounty: boolean;
+  /** Protocol-level audit presence (step 6). Not the same as coverageState. */
+  auditStatus: AuditStatus;
   coverageState: CoverageState;
   driftDays: number | null;
   /** Null when no queue item exists yet — the target is a bare candidate. */
@@ -110,6 +128,7 @@ export async function getQueue(): Promise<QueueRow[]> {
       protocolSlug: protocols.slug,
       isPublished: protocols.isPublished,
       hasBounty: protocols.hasBounty,
+      auditStatus: auditStatusSql,
       chain: deployments.chain,
       addressOrProgramId: deployments.addressOrProgramId,
       label: deployments.label,
@@ -156,6 +175,7 @@ export async function getQueue(): Promise<QueueRow[]> {
       tvlUsd,
       isUpgradeable: d.isUpgradeable,
       hasBounty: d.hasBounty,
+      auditStatus: d.auditStatus,
       coverageState: d.coverageState,
       driftDays: d.driftDays,
       queueStatus: (q?.status ?? null) as QueueStatus | null,
@@ -187,6 +207,7 @@ export interface QueueCounts {
   open: number;
   uncovered: number;
   unpublished: number;
+  unaudited: number;
 }
 
 /** Small header tallies for the queue page. Derived from the ranked rows. */
@@ -194,12 +215,111 @@ export function summarizeQueue(rows: QueueRow[]): QueueCounts {
   let open = 0;
   let uncovered = 0;
   let unpublished = 0;
+  let unaudited = 0;
   for (const r of rows) {
     if (OPEN_STATUSES.has(r.queueStatus)) open += 1;
     if (r.coverageState === "uncovered") uncovered += 1;
     if (!r.isPublished) unpublished += 1;
+    if (r.auditStatus === "unaudited") unaudited += 1;
   }
-  return { total: rows.length, open, uncovered, unpublished };
+  return { total: rows.length, open, uncovered, unpublished, unaudited };
+}
+
+/* ─── Sourced protocols with no deployments yet (step 6) ───────────────────
+   DefiLlama gives no contract addresses, so a freshly sourced protocol has no
+   deployment rows — and `deployments.address_or_program_id` is NOT NULL, so
+   the sync will not fabricate one. getQueue() above is keyed on deployments
+   and therefore cannot see these protocols at all.
+
+   They are still targets: an unaudited protocol holding $80M is worth pinning
+   contracts for even though nothing on-chain has been recorded yet. This query
+   surfaces them as a second, protocol-level list ranked by
+   computeProtocolPriority, and step 7 graduates them into the real queue as it
+   creates their deployments. */
+
+export interface SourcedProtocolRow {
+  protocolId: number;
+  name: string;
+  slug: string;
+  website: string | null;
+  githubRepo: string | null;
+  twitter: string | null;
+  isPublished: boolean;
+  hasBounty: boolean;
+  tvlUsd: number | null;
+  auditStatus: AuditStatus;
+  /** How many DefiLlama report links (and markers) we hold for it. */
+  auditCount: number;
+  /** Computed here, never stored. Higher = pin its contracts sooner. */
+  priorityScore: number;
+}
+
+export interface SourcedProtocolList {
+  rows: SourcedProtocolRow[];
+  /** Total matching protocols, before `limit` — the list is long by design. */
+  total: number;
+  unaudited: number;
+}
+
+/**
+ * Active protocols with zero deployment rows, ranked. `limit` caps the rendered
+ * table (a $1M-floor DefiLlama sync lands ~1,300 of these); the counts describe
+ * the whole set so the page can say what it is not showing.
+ */
+export async function getSourcedProtocols(limit = 100): Promise<SourcedProtocolList> {
+  const rows = await db
+    .select({
+      protocolId: protocols.id,
+      name: protocols.name,
+      slug: protocols.slug,
+      website: protocols.website,
+      githubRepo: protocols.githubRepo,
+      twitter: protocols.twitter,
+      isPublished: protocols.isPublished,
+      hasBounty: protocols.hasBounty,
+      tvlUsd: protocols.tvlUsd,
+      auditStatus: auditStatusSql,
+      auditCount: sql<number>`(
+        select count(*)::int from ${audits}
+        where ${audits.protocolId} = ${protocols.id}
+      )`,
+    })
+    .from(protocols)
+    .where(
+      and(
+        active(),
+        sql`not exists (
+          select 1 from ${deployments}
+          where ${deployments.protocolId} = ${protocols.id}
+        )`,
+      ),
+    );
+
+  const ranked = rows
+    .map((r) => {
+      const tvlUsd = toNumber(r.tvlUsd);
+      return {
+        ...r,
+        tvlUsd,
+        priorityScore: computeProtocolPriority({
+          auditStatus: r.auditStatus,
+          tvlUsd,
+          hasBounty: r.hasBounty,
+        }),
+      };
+    })
+    .sort(
+      (a, b) =>
+        b.priorityScore - a.priorityScore ||
+        (b.tvlUsd ?? 0) - (a.tvlUsd ?? 0) ||
+        a.name.localeCompare(b.name),
+    );
+
+  return {
+    rows: ranked.slice(0, limit),
+    total: ranked.length,
+    unaudited: ranked.filter((r) => r.auditStatus === "unaudited").length,
+  };
 }
 
 export interface TargetAudit {

@@ -60,6 +60,11 @@ export const auditSourceEnum = pgEnum("audit_source", [
   "auditor_site",
   "github",
   "submitted",
+  // Added in step 6. Its own member rather than reusing 'protocol_docs':
+  // a DefiLlama row is a machine-sourced marker with no auditor, no report
+  // date and no reviewed commit, and the sync needs to tell its own rows apart
+  // from anything a human recorded so a re-run never overwrites hand work.
+  "defillama",
 ]);
 
 export const leadSourceEnum = pgEnum("lead_source", [
@@ -124,6 +129,12 @@ export const protocols = pgTable("protocols", {
   defillamaId: text("defillama_id"),
   githubRepo: text("github_repo"),
   twitter: text("twitter"),
+  // Protocol-level TVL, added in step 6 as the curated list's money column.
+  // Distinct from deployments.tvl_usd, which is per-contract: a sourced
+  // protocol has no deployment rows yet (DefiLlama gives no contract
+  // addresses — that is step 7), so without this there is nothing to rank
+  // 1,300 imported targets by. Written only by the DefiLlama sync.
+  tvlUsd: numeric("tvl_usd", { precision: 30, scale: 2 }),
   securityContact: text("security_contact"),
   hasBounty: boolean("has_bounty").notNull().default(false),
   bountyPlatform: bountyPlatformEnum("bounty_platform").notNull().default("none"),

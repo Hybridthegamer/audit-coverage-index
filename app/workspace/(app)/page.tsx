@@ -3,9 +3,14 @@ import Link from "next/link";
 import { Reveal } from "@/components/Reveal";
 import { StateMarker } from "@/components/StateMarker";
 import { WorkspaceNav } from "@/components/WorkspaceNav";
-import { runIngestAction } from "@/app/workspace/mutations";
-import { getQueue, summarizeQueue } from "@/db/queries/workspace";
+import { runIngestAction, syncDefiLlamaAction } from "@/app/workspace/mutations";
 import {
+  getQueue,
+  getSourcedProtocols,
+  summarizeQueue,
+} from "@/db/queries/workspace";
+import {
+  auditStatusLabel,
   chainLabel,
   formatDate,
   formatDrift,
@@ -14,6 +19,7 @@ import {
   queueStatusLabel,
   truncateAddress,
 } from "@/lib/format";
+import { IN_APP_SYNC_LIMIT } from "@/lib/sources/defillama.config";
 
 /**
  * The research queue — every active target ranked for review. This is the
@@ -26,8 +32,11 @@ import {
  */
 export const dynamic = "force-dynamic";
 
+/** How many unpinned protocols the second table renders before truncating. */
+const SOURCED_LIMIT = 100;
+
 export default async function QueuePage() {
-  const rows = await getQueue();
+  const [rows, sourced] = await Promise.all([getQueue(), getSourcedProtocols(SOURCED_LIMIT)]);
   const counts = summarizeQueue(rows);
 
   return (
@@ -45,7 +54,8 @@ export default async function QueuePage() {
           <Reveal>
             <p className="bam-eyebrow">
               {plural(counts.total, "TARGET")} · {counts.open} OPEN ·{" "}
-              {plural(counts.unpublished, "UNPUBLISHED")}
+              {plural(counts.unpublished, "UNPUBLISHED")} ·{" "}
+              {plural(sourced.total, "UNPINNED PROTOCOL")}
             </p>
             <h1 className="bam-headline">The queue.</h1>
             <p
@@ -58,13 +68,30 @@ export default async function QueuePage() {
               Priority is a private research heuristic, not a published score.
             </p>
 
-            {/* Ingest: recompute drift for every deployment and top up the
-                candidate queue, then revalidate the public pages. */}
-            <form action={runIngestAction} style={{ marginTop: "var(--bam-space-lg)" }}>
-              <button type="submit" className="bam-btn-sm">
-                Run ingest
-              </button>
-            </form>
+            <div
+              style={{
+                display: "flex",
+                gap: "var(--bam-space-sm)",
+                flexWrap: "wrap",
+                marginTop: "var(--bam-space-lg)",
+              }}
+            >
+              {/* Ingest: recompute drift for every deployment and top up the
+                  candidate queue, then revalidate the public pages. */}
+              <form action={runIngestAction}>
+                <button type="submit" className="bam-btn-sm">
+                  Run ingest
+                </button>
+              </form>
+
+              {/* Sourcing: the capped in-app refresh. `npm run db:source` is the
+                  full run — see lib/sources/defillama.config.ts. */}
+              <form action={syncDefiLlamaAction}>
+                <button type="submit" className="bam-btn-sm">
+                  Sync DefiLlama · top {IN_APP_SYNC_LIMIT}
+                </button>
+              </form>
+            </div>
           </Reveal>
         </section>
 
@@ -88,6 +115,7 @@ export default async function QueuePage() {
                     <th scope="col" style={{ textAlign: "right" }}>
                       TVL
                     </th>
+                    <th scope="col">Audit</th>
                     <th scope="col">Coverage</th>
                     <th scope="col" style={{ textAlign: "right" }}>
                       Drift
@@ -130,6 +158,17 @@ export default async function QueuePage() {
                       </td>
                       <td className="bam-cell-num">{formatTvl(row.tvlUsd)}</td>
                       <td>
+                        {row.auditStatus === "unaudited" ? (
+                          <span className="bam-badge bam-badge--confirmed">
+                            {auditStatusLabel(row.auditStatus)}
+                          </span>
+                        ) : (
+                          <span style={{ color: "var(--bam-cream-40)" }}>
+                            {auditStatusLabel(row.auditStatus)}
+                          </span>
+                        )}
+                      </td>
+                      <td>
                         <StateMarker state={row.coverageState} />
                       </td>
                       <td className="bam-cell-num">{formatDrift(row.driftDays)}</td>
@@ -146,13 +185,136 @@ export default async function QueuePage() {
 
               {rows.length === 0 ? (
                 <p className="bam-body" style={{ padding: "var(--bam-space-xl) 0" }}>
-                  No targets. Seed the dev branch, or wait for the ingest worker
-                  (step 5).
+                  No targets. Seed the dev branch, or run{" "}
+                  <code>npm run db:source</code> to pull the curated DefiLlama set.
                 </p>
               ) : null}
             </div>
           </Reveal>
         </section>
+
+        {/* Sourced protocols with no deployment rows yet. DefiLlama gives no
+            contract addresses, so these cannot appear in the ranked queue above
+            — but an unaudited protocol holding real money is a target before
+            anybody has pinned its contracts. Step 7 graduates them. */}
+        {sourced.total > 0 ? (
+          <section
+            className="bam-pad-x"
+            style={{ paddingBottom: "var(--bam-space-3xl)" }}
+          >
+            <Reveal>
+              <p className="bam-eyebrow">
+                {plural(sourced.total, "PROTOCOL")} ·{" "}
+                {sourced.unaudited} WITH NO AUDIT ON RECORD
+              </p>
+              <h2 className="bam-title">Sourced, not yet pinned.</h2>
+              <p
+                className="bam-body"
+                style={{ maxWidth: "58ch", marginTop: "var(--bam-space-md)" }}
+              >
+                Protocols the DefiLlama sync curated but for which no contract
+                addresses have been recorded, so they carry no coverage state
+                yet — the feed lists TVL and audit reports, never deployed code.
+                Ranked by audit presence and money at risk. Pin a protocol&rsquo;s
+                contracts and it joins the queue above.
+              </p>
+
+              <div
+                className="bam-table-scroll"
+                style={{ marginTop: "var(--bam-space-lg)" }}
+              >
+                <table className="bam-table">
+                  <caption
+                    className="bam-eyebrow"
+                    style={{ textAlign: "left", marginBottom: "var(--bam-space-sm)" }}
+                  >
+                    UNPINNED PROTOCOLS · RANKED
+                  </caption>
+                  <thead>
+                    <tr>
+                      <th scope="col" style={{ textAlign: "right" }}>
+                        Priority
+                      </th>
+                      <th scope="col">Protocol</th>
+                      <th scope="col" style={{ textAlign: "right" }}>
+                        TVL
+                      </th>
+                      <th scope="col">Audit</th>
+                      <th scope="col" style={{ textAlign: "right" }}>
+                        Reports
+                      </th>
+                      <th scope="col">Links</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {sourced.rows.map((p) => (
+                      <tr key={p.protocolId}>
+                        <td className="bam-cell-num">{p.priorityScore}</td>
+                        <td>
+                          <span className="bam-cell-name">{p.name}</span>{" "}
+                          <span
+                            style={{
+                              fontSize: "var(--bam-t-micro)",
+                              color: "var(--bam-cream-40)",
+                            }}
+                          >
+                            {p.slug}
+                          </span>
+                        </td>
+                        <td className="bam-cell-num">{formatTvl(p.tvlUsd)}</td>
+                        <td>
+                          {p.auditStatus === "unaudited" ? (
+                            <span className="bam-badge bam-badge--confirmed">
+                              {auditStatusLabel(p.auditStatus)}
+                            </span>
+                          ) : (
+                            <span style={{ color: "var(--bam-cream-40)" }}>
+                              {auditStatusLabel(p.auditStatus)}
+                            </span>
+                          )}
+                        </td>
+                        <td className="bam-cell-num">{p.auditCount}</td>
+                        <td style={{ color: "var(--bam-cream-60)" }}>
+                          {p.website ? (
+                            <a href={p.website} rel="noopener noreferrer nofollow">
+                              site
+                            </a>
+                          ) : null}
+                          {p.website && p.githubRepo ? " · " : null}
+                          {p.githubRepo ? (
+                            <a href={p.githubRepo} rel="noopener noreferrer nofollow">
+                              github
+                            </a>
+                          ) : null}
+                          {(p.website || p.githubRepo) && p.twitter ? " · " : null}
+                          {p.twitter ? (
+                            <a
+                              href={`https://x.com/${p.twitter}`}
+                              rel="noopener noreferrer nofollow"
+                            >
+                              x
+                            </a>
+                          ) : null}
+                          {!p.website && !p.githubRepo && !p.twitter ? "—" : null}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+
+                {sourced.total > sourced.rows.length ? (
+                  <p
+                    className="bam-eyebrow"
+                    style={{ paddingTop: "var(--bam-space-md)" }}
+                  >
+                    Showing the top {sourced.rows.length} of{" "}
+                    {plural(sourced.total, "protocol")}.
+                  </p>
+                ) : null}
+              </div>
+            </Reveal>
+          </section>
+        ) : null}
       </main>
     </>
   );

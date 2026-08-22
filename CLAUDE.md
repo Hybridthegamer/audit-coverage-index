@@ -2,7 +2,8 @@
 
 Audit Coverage Index — tracks which DeFi protocols run code their auditors
 never reviewed. Public coverage index (indexed, no auth) + private research
-workspace (`/workspace/*`, single-user auth). Being built in five sessions.
+workspace (`/workspace/*`, single-user auth). Built in numbered sessions;
+steps 1–6 are done and step 7 (on-chain deployment data) is next.
 
 ## Stack
 
@@ -26,8 +27,11 @@ Migrations are committed under `drizzle/` and are the source of truth for the DB
 
 - `npm run db:generate` — regenerate SQL from `db/schema.ts` after any schema edit
 - `npm run db:migrate` — apply committed migrations to the Neon branch
-- `npm run db:seed` — wipe + reseed (5 protocols, all four coverage states)
-- `npm test` — drift unit tests
+- `npm run db:seed` — wipe + reseed (5 protocols, all four coverage states).
+  DESTRUCTIVE; the only script that truncates.
+- `npm run db:source` — sync the curated DefiLlama set. Idempotent + additive;
+  flags `--dry-run`, `--limit=N`, `--no-ingest`
+- `npm test` — unit tests (drift, priority, ingest planners, DefiLlama source)
 
 Edit the schema, generate, then apply — never hand-edit generated SQL.
 
@@ -46,7 +50,19 @@ Edit the schema, generate, then apply — never hand-edit generated SQL.
 - [x] 5. Ingest modules, findings editor, disclosure timeline (done). Recompute
       pipeline (`lib/ingest.ts`) + CLI (`npm run db:ingest`) + in-app action with
       public revalidation; findings CRUD; disclosure timeline; queue transitions;
-      publish toggle. All five build steps complete.
+      publish toggle.
+- [x] 6. DefiLlama sourcing (done). `lib/sources/defillama.ts` + config,
+      `syncFromDefiLlama()` in `lib/ingest.ts`, `npm run db:source`, the capped
+      in-app sync action, query-time `auditStatus`, and the unpinned-protocol
+      table on the queue. Plan doc: `plan.md`.
+- [ ] 7. On-chain deployment + upgrade data (NOT started). Block explorers
+      (Etherscan/Basescan/Arbiscan) for real contract addresses per chain,
+      `deployed_commit`, `last_upgraded_at`, proxy-storage reads and upgrade
+      events; plus deeper audit-report discovery (GitHub `/audits` folders,
+      reviewed commits, report dates). This is what turns a sourced protocol's
+      `unknown` into a real `coverage_state`. Also unstarted: wiring
+      `vulnerability-submission-template.md` into a "generate submission"
+      action off a finding.
 
 ## Locked constraints from step 1
 
@@ -172,3 +188,67 @@ Edit the schema, generate, then apply — never hand-edit generated SQL.
 - No `poc_code` in the DB. `findings.poc_ref` is a string pointer only.
 - Build nothing out of its assigned step: no UI, routes, auth, or ingest until
   the step that owns them.
+
+## Locked constraints from step 6
+
+- **DefiLlama is the CURATION layer, not the coverage engine.** The feed gives
+  audit *presence* (`audits` count, `audit_links`) and money, never a reviewed
+  commit, a report date, an auditor name, or a deployed contract address. Two
+  different questions, never conflate them:
+  · `auditStatus` (`audited`/`unaudited`) — "did anybody review this project" —
+    computed at query time in `db/queries/workspace.ts`, answerable today.
+  · `coverage_state` — "does the deployed code match what was audited" — needs
+    both commits and stays `unknown` for sourced rows until step 7.
+  A sourced protocol computing to `unknown` is the correct answer, not a bug.
+- **The sync never fabricates deployments.** `deployments.address_or_program_id`
+  is NOT NULL and DefiLlama has no per-contract addresses, so step 6 imports at
+  the protocol + audits level only. Because `getQueue()` is keyed on
+  deployments, those protocols are surfaced by a SECOND query,
+  `getSourcedProtocols()`, and a second table on the queue page. Step 7 creates
+  their deployments and they graduate into the real queue.
+- **`syncFromDefiLlama` owns only what it sourced.** Its write payload is the
+  enforcement point: it contains name, website, twitter, github_repo,
+  defillama_id, tvl_usd and NOTHING else. `is_published`, `archived`,
+  `security_contact` and every bounty field are absent, so a re-run can never
+  republish a retracted protocol or clobber a researcher's note. `github_repo`
+  is fill-if-empty (the feed only knows the ORG page). Never add a key to that
+  payload without deciding what a re-run does to hand-entered data.
+- **Sourcing is idempotent and additive, unlike `db/seed.ts`.** Upsert on
+  `protocols.slug`, chunked `insert … on conflict do update` (200 rows a
+  statement — per-row updates time out at ~1,300 records). A protocol that
+  leaves DefiLlama is NEVER deleted; you may have private findings against it.
+- **Sourced rows land unpublished.** Nothing from the feed reaches the public
+  index until the researcher flips the step-5 publish toggle.
+- **Audit rows from the feed are coarse markers.** `source = 'defillama'`
+  (its own enum member, not `protocol_docs`), `auditor = "Unknown (DefiLlama)"`,
+  `report_date` and `reviewed_commit` NULL, and no `audit_deployments` link — so
+  a marker can never move a deployment off `unknown`. Dedup is by report URL;
+  when the feed claims N audits but publishes no links (real and common — see
+  Aerodrome Slipstream) ONE count-marker row with a null `report_url` is written
+  instead of N fabricated rows. `AUDIT_COUNT_MARKER_KEY` is that row's dedup key.
+- **Two schema additions, still 10 tables.** `protocols.tvl_usd`
+  (numeric(30,2) — the curated list's money column, distinct from the
+  per-contract `deployments.tvl_usd`) and `'defillama'` on the `audit_source`
+  enum. Migration `drizzle/0002_open_ironclad.sql`.
+- **`computeProtocolPriority` is a SECOND private formula** in `lib/priority.ts`,
+  for protocols with no deployments — none of `computePriority`'s inputs exist
+  for them. Same rules as `priority_score`: pure, tested, written formula,
+  computed at query time, never stored, never public, never a percentage.
+- **Curation thresholds live in the environment**, parsed by the pure
+  `filterFromEnv` (`lib/sources/defillama.config.ts`): `DEFILLAMA_MIN_TVL_USD`
+  (default $1M), `DEFILLAMA_CATEGORIES`, `DEFILLAMA_CHAINS`,
+  `DEFILLAMA_INCLUDE_INACTIVE`, `DEFILLAMA_MAX_PROTOCOLS`. All optional, all
+  server-only — none may become `NEXT_PUBLIC_`; the curation policy is the shape
+  of the private queue. Unparseable values fall back to the default rather than
+  aborting a run. Rugged/deprecated/dead-link protocols are dropped by default.
+- **The CLI is the primary run path.** `npm run db:source` does the full ~1,300
+  protocol sync; the in-app "Sync DefiLlama" button is capped at
+  `IN_APP_SYNC_LIMIT` (150 by TVL) because an 8MB fetch plus 1,300 upserts is
+  not a serverless request's job. The button exists because only it can call
+  `revalidatePath` — same split as `db:ingest` vs `runIngestAction` in step 5.
+- **`lib/sources/defillama.ts` imports no DB and no schema.** Network and
+  curation policy only; `lib/ingest.ts` is the write half and still takes `db`
+  as an argument. Everything that turns a feed row into a curated record is a
+  pure exported function tested against a fixture — the feed's field types are
+  hostile (`audits` is a string, `github` is an org array, `url` is sometimes
+  `ipfs://`) and every one of those shapes has a test.

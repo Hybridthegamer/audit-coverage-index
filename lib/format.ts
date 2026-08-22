@@ -66,6 +66,21 @@ export function queueStatusLabel(status: string | null): string {
   return QUEUE_STATUS_LABEL[status] ?? status;
 }
 
+/**
+ * Audit-presence labels (step 6). The curation-layer signal: "has anybody
+ * reviewed this project at all", which is a different and much weaker claim
+ * than coverage state. Kept verbally distinct from COVERAGE_LABEL for that
+ * reason — "Unaudited" is not "Uncovered", and nothing here is ever red.
+ */
+export const AUDIT_STATUS_LABEL: Record<string, string> = {
+  audited: "Audited",
+  unaudited: "No audit",
+};
+
+export function auditStatusLabel(status: string): string {
+  return AUDIT_STATUS_LABEL[status] ?? status;
+}
+
 /** Finding lifecycle labels (private workspace, step 5). */
 export const FINDING_STATUS_LABEL: Record<string, string> = {
   draft: "Draft",

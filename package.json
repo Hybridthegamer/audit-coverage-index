@@ -12,6 +12,7 @@
     "db:push": "drizzle-kit push",
     "db:seed": "tsx db/seed.ts",
     "db:ingest": "tsx scripts/ingest.ts",
+    "db:source": "tsx scripts/source-defillama.ts",
     "test": "vitest run",
     "test:watch": "vitest"
   },
