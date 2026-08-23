@@ -4,38 +4,62 @@ import Link from "next/link";
 import { Reveal } from "@/components/Reveal";
 import { SiteNav } from "@/components/SiteNav";
 import { StateMarker } from "@/components/StateMarker";
-import { getCoverageSummary } from "@/db/queries/public";
 import type { CoverageState } from "@/lib/drift";
-import { COVERAGE_MEANING, formatTvl, plural } from "@/lib/format";
-import { SITE_NAME, SITE_TAGLINE } from "@/lib/site";
+import { COVERAGE_MEANING } from "@/lib/format";
+import { SITE_NAME } from "@/lib/site";
 
 /**
- * Landing page — the argument, not the data. One number carries it: how many
- * deployed contracts are running code that is downstream of every audit their
- * protocol ever published. The table itself lives at /index.
+ * Landing page — the door to the private research desk, and nothing else.
  *
- * ISR: revalidated hourly. Coverage changes when a protocol upgrades or a new
- * audit lands — neither is minute-scale, and the ingest worker (step 5) will
- * revalidate on demand when it writes.
+ * Deliberately static: it reads no database. The counts that used to headline
+ * this page came from `getCoverageSummary()`, which only counts PUBLISHED rows,
+ * so with nothing published it rendered zeros — an empty product standing in
+ * front of a full workspace. The four states below are a legend (what the words
+ * mean), not data, so they need no query and no revalidate window.
+ *
+ * That also takes this page out of the public query surface entirely. `/index`
+ * and `/protocols/[slug]` still exist and still read through
+ * `db/queries/public.ts`; this page simply no longer points anyone at them.
  */
-export const revalidate = 3600;
 
 export const metadata: Metadata = {
   // `absolute` opts out of the layout title template — otherwise the home
   // page renders "Audit Coverage Index · Audit Coverage Index".
   title: { absolute: SITE_NAME },
-  description: SITE_TAGLINE,
+  description:
+    "A private audit research desk. An audit covers a commit, not a protocol — this is where the gap between the two gets measured.",
   alternates: { canonical: "/" },
 };
 
 const ORDER: CoverageState[] = ["uncovered", "drifted", "current", "unknown"];
 
-export default async function Home() {
-  const summary = await getCoverageSummary();
+/** What is behind the key, in the order the work actually runs. */
+const DESK: { label: string; body: string }[] = [
+  {
+    label: "QUEUE",
+    body: "The curated band, ranked. Money, audit presence, category and chain — filtered down to the protocols worth a week.",
+  },
+  {
+    label: "TARGETS",
+    body: "A pinned contract per protocol: deployment date, upgrade history, proxy authority, whether the source is even verified.",
+  },
+  {
+    label: "FINDINGS",
+    body: "What the review turned up, recorded against the deployment it belongs to. Pointers to proof — never exploit code.",
+  },
+  {
+    label: "DISCLOSURE",
+    body: "The timeline. Contacted, acknowledged, fixed. Dates, not adjectives.",
+  },
+];
 
+export default function Home() {
   return (
     <>
-      <SiteNav page="COVERAGE MEASUREMENT" />
+      <SiteNav
+        page="PRIVATE · ONE KEY HOLDER"
+        action={{ href: "/workspace", label: "Enter workspace →" }}
+      />
 
       <main className="bam-page">
         {/* ─── Hero ────────────────────────────────────────────────────── */}
@@ -43,30 +67,30 @@ export default async function Home() {
           <div className="bam-wide" style={{ width: "100%" }}>
             <Reveal>
               <p className="bam-eyebrow">
-                {plural(summary.protocolCount, "PROTOCOL")} ·{" "}
-                {plural(summary.total, "DEPLOYMENT")} TRACKED
+                PRIVATE AUDIT RESEARCH · ONE KEY HOLDER
               </p>
             </Reveal>
 
             <Reveal delay={80}>
               <h1 className="bam-display">
-                {plural(summary.uncovered, "contract")}
+                Audit
                 <br />
-                nobody <em>actually</em>
+                Coverage
                 <br />
-                reviewed.
+                <em>Index.</em>
               </h1>
             </Reveal>
 
             <Reveal delay={200}>
               <p
                 className="bam-body"
-                style={{ maxWidth: "44ch", marginTop: "var(--bam-space-xl)" }}
+                style={{ maxWidth: "46ch", marginTop: "var(--bam-space-xl)" }}
               >
                 An audit covers a commit, not a protocol. Every upgrade shipped
                 after the auditors signed off is code that was never in scope.
-                This index measures the gap — publicly, per deployment, with the
-                dates showing.
+                This is the desk where that gap gets worked — protocol by
+                protocol, with the dates showing. Nothing here is published
+                until it is finished.
               </p>
             </Reveal>
 
@@ -79,11 +103,11 @@ export default async function Home() {
                   marginTop: "var(--bam-space-xl)",
                 }}
               >
-                <Link href="/index" className="bam-btn-primary">
-                  Read the index
+                <Link href="/workspace" className="bam-btn-primary">
+                  Enter the workspace
                 </Link>
-                <Link href="#method" className="bam-btn-ghost">
-                  How it is measured
+                <Link href="#desk" className="bam-btn-ghost">
+                  What is in there
                 </Link>
               </div>
             </Reveal>
@@ -99,25 +123,77 @@ export default async function Home() {
                   AN AUDIT COVERS A COMMIT — NOT A PROTOCOL
                 </span>
                 <span className="bam-marquee-item bam-marquee-item--accent">
-                  {plural(summary.uncovered, "UNCOVERED DEPLOYMENT")}
+                  PRIVATE RESEARCH · NOT PUBLISHED
                 </span>
                 <span className="bam-marquee-item">
-                  {formatTvl(summary.uncoveredTvlUsd)} SITTING ON UNREVIEWED CODE
+                  THE COMMITS ARE CONFIRMED BY HAND
                 </span>
-                <span className="bam-marquee-item">
-                  MEASURED, NOT SCORED
-                </span>
+                <span className="bam-marquee-item">MEASURED, NOT SCORED</span>
               </span>
             ))}
           </div>
         </div>
+
+        {/* ─── What is behind the key ──────────────────────────────────── */}
+        <section
+          id="desk"
+          className="bam-pad-x"
+          style={{
+            paddingTop: "var(--bam-space-3xl)",
+            paddingBottom: "var(--bam-space-2xl)",
+          }}
+        >
+          <div className="bam-wide">
+            <Reveal>
+              <p className="bam-eyebrow">BEHIND THE KEY</p>
+              <h2 className="bam-headline">The research desk.</h2>
+              <p
+                className="bam-body"
+                style={{ maxWidth: "52ch", marginTop: "var(--bam-space-lg)" }}
+              >
+                One password, one holder, no accounts. Everything past the gate
+                is working material: unfinished targets, unsent disclosures, and
+                notes that stay wrong until somebody checks them.
+              </p>
+            </Reveal>
+
+            <Reveal delay={120}>
+              <div
+                className="bam-data-list"
+                style={{ marginTop: "var(--bam-space-2xl)" }}
+              >
+                {DESK.map((item) => (
+                  <div className="bam-data-row" key={item.label}>
+                    <span
+                      className="bam-eyebrow"
+                      style={{ minWidth: "11rem", flexShrink: 0 }}
+                    >
+                      {item.label}
+                    </span>
+                    <span
+                      className="bam-body"
+                      style={{
+                        flex: 1,
+                        textAlign: "left",
+                        fontSize: "0.8rem",
+                        lineHeight: 1.6,
+                      }}
+                    >
+                      {item.body}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </Reveal>
+          </div>
+        </section>
 
         {/* ─── The four states ─────────────────────────────────────────── */}
         <section
           id="method"
           className="bam-pad-x"
           style={{
-            paddingTop: "var(--bam-space-3xl)",
+            paddingTop: "var(--bam-space-2xl)",
             paddingBottom: "var(--bam-space-3xl)",
           }}
         >
@@ -129,11 +205,12 @@ export default async function Home() {
                 className="bam-body"
                 style={{ maxWidth: "52ch", marginTop: "var(--bam-space-lg)" }}
               >
-                Coverage is a fact about git ancestry, not a rating. We resolve
-                the most recent audit whose reviewed commit is an ancestor of
-                what is deployed on-chain, then measure the days of code that
-                landed after it. There is no weighting and no composite number
-                to game.
+                Coverage is a fact about git ancestry, not a rating. The desk
+                resolves the most recent audit whose reviewed commit is an
+                ancestor of what is deployed on-chain, then measures the days of
+                code that landed after it. Both commits are confirmed by hand —
+                no external source can supply either, so nothing here guesses.
+                There is no weighting and no composite number to game.
               </p>
             </Reveal>
 
@@ -158,12 +235,6 @@ export default async function Home() {
                     >
                       {COVERAGE_MEANING[state]}
                     </span>
-                    <span
-                      className="bam-data-val--serif"
-                      style={{ minWidth: "3rem", textAlign: "right" }}
-                    >
-                      {summary[state]}
-                    </span>
                   </div>
                 ))}
               </div>
@@ -176,12 +247,20 @@ export default async function Home() {
               >
                 <p className="bam-notice-label">On what this is not</p>
                 <p className="bam-notice-body">
-                  An uncovered deployment is not a vulnerability, and this index
-                  does not claim one. It says only that the code running on-chain
+                  An uncovered deployment is not a vulnerability, and nothing
+                  here claims one. It says only that the code running on-chain
                   was never in an audit&apos;s scope. That is a measurable fact
-                  about coverage, and it is the fact the industry keeps not
-                  writing down.
+                  about coverage — and establishing it, before a single word
+                  goes out to a protocol team, is the whole job.
                 </p>
+              </div>
+            </Reveal>
+
+            <Reveal delay={280}>
+              <div style={{ marginTop: "var(--bam-space-2xl)" }}>
+                <Link href="/workspace" className="bam-btn-primary">
+                  Enter the workspace
+                </Link>
               </div>
             </Reveal>
           </div>
@@ -205,13 +284,9 @@ export default async function Home() {
               flexWrap: "wrap",
             }}
           >
-            <span className="bam-nav-brand">AUDIT COVERAGE INDEX</span>
-            <Link
-              href="/index"
-              className="bam-nav-page"
-              style={{ textDecoration: "none" }}
-            >
-              THE INDEX →
+            <span className="bam-nav-brand">AUDIT COVERAGE INDEX · PRIVATE</span>
+            <Link href="/workspace" className="bam-nav-link">
+              ENTER THE WORKSPACE →
             </Link>
           </div>
         </footer>

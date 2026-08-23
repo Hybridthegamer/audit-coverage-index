@@ -32,6 +32,11 @@ export const metadata: Metadata = {
   description:
     "Every tracked DeFi deployment, with the audit that covers it and the days of code shipped since.",
   alternates: { canonical: "/index" },
+  // Not offered for indexing. The landing page is the workspace door and no
+  // longer links here, so this catalog is reachable by direct URL only. It
+  // still serves, and still reads through the published-only public query
+  // layer; it is simply not advertised. Drop this key to publish it again.
+  robots: { index: false, follow: false },
 };
 
 const LEGEND: CoverageState[] = ["uncovered", "drifted", "current", "unknown"];

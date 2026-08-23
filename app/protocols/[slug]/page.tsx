@@ -56,6 +56,8 @@ export async function generateMetadata({
     title: protocol.name,
     description,
     alternates: { canonical: `/protocols/${protocol.slug}` },
+    // Same as /index: still served, no longer advertised. See app/robots.ts.
+    robots: { index: false, follow: false },
   };
 }
 
