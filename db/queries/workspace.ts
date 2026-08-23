@@ -238,36 +238,124 @@ export function summarizeQueue(rows: QueueRow[]): QueueCounts {
    computeProtocolPriority, and step 7 graduates them into the real queue as it
    creates their deployments. */
 
-export interface SourcedProtocolRow {
+/* ─── The protocol list (step 8) ───────────────────────────────────────────
+
+   THE PRIMARY RESEARCH SURFACE, and deliberately the simplest query in this
+   file. It answers one question — "which protocol should I audit next?" — from
+   data the DefiLlama sync alone can supply: money, audit presence, category,
+   chain, links.
+
+   It needs no pinned contract, no deployed commit, no audit link and no
+   publish. Those belong to coverage_state, which answers the much harder
+   question of whether deployed code matches what was reviewed. Keeping the two
+   apart is the whole point: the list is useful on the first sync, and the
+   coverage machinery is there for when a target earns that depth of work.
+
+   It replaces step 6's `getSourcedProtocols`, which hard-capped at 100 and
+   excluded any protocol that already had a deployment — both correct for the
+   "not yet pinned" waiting room it fed, both wrong for a list you pick targets
+   from. That function is gone rather than left beside this one: two overlapping
+   list queries is how they drift apart. */
+
+export type ProtocolSort = "priority" | "tvl" | "name" | "reports";
+
+export interface ProtocolListFilter {
+  /** `audited` / `unaudited`, or null for both. */
+  auditStatus?: AuditStatus | null;
+  /** Case-insensitive DefiLlama category, e.g. "Lending". */
+  category?: string | null;
+  /** Case-insensitive DefiLlama chain name, e.g. "Ethereum". */
+  chain?: string | null;
+  /** Substring match on name or slug. */
+  search?: string | null;
+  minTvlUsd?: number | null;
+  sort?: ProtocolSort;
+  limit?: number;
+  offset?: number;
+}
+
+export interface ProtocolListRow {
   protocolId: number;
   name: string;
   slug: string;
   website: string | null;
   githubRepo: string | null;
   twitter: string | null;
-  isPublished: boolean;
-  hasBounty: boolean;
+  category: string | null;
+  chains: string[];
   tvlUsd: number | null;
+  hasBounty: boolean;
+  isPublished: boolean;
   auditStatus: AuditStatus;
-  /** How many DefiLlama report links (and markers) we hold for it. */
+  /** How many audit records we hold — DefiLlama markers plus GitHub reports. */
   auditCount: number;
-  /** Computed here, never stored. Higher = pin its contracts sooner. */
+  /** Reports with a real auditor name, which only GitHub discovery produces. */
+  namedAuditCount: number;
+  /** Whether any contract has been pinned — the bridge to the coverage side. */
+  isPinned: boolean;
+  /** Computed at query time, never stored. Higher = look sooner. */
   priorityScore: number;
 }
 
-export interface SourcedProtocolList {
-  rows: SourcedProtocolRow[];
-  /** Total matching protocols, before `limit` — the list is long by design. */
+export interface ProtocolList {
+  rows: ProtocolListRow[];
+  /** Matching the filter, before limit/offset. */
   total: number;
+  /** Every active protocol, ignoring the filter — for the "showing X of Y". */
+  grandTotal: number;
   unaudited: number;
+  /** Distinct categories present, for the filter control. */
+  categories: string[];
+  /** Distinct chains present, for the filter control. */
+  chains: string[];
 }
 
 /**
- * Active protocols with zero deployment rows, ranked. `limit` caps the rendered
- * table (a $1M-floor DefiLlama sync lands ~1,300 of these); the counts describe
- * the whole set so the page can say what it is not showing.
+ * The protocol list, filtered and ranked.
+ *
+ * Filtering happens in SQL so a 900-row table does not cross the wire to be
+ * thrown away in JS; ranking happens in JS because `priorityScore` is computed,
+ * never stored, and sorting by a column that does not exist is not a thing SQL
+ * can do for us.
  */
-export async function getSourcedProtocols(limit = 100): Promise<SourcedProtocolList> {
+export async function getProtocolList(
+  filter: ProtocolListFilter = {},
+): Promise<ProtocolList> {
+  const {
+    auditStatus = null,
+    category = null,
+    chain = null,
+    search = null,
+    minTvlUsd = null,
+    sort = "priority",
+    limit = 200,
+    offset = 0,
+  } = filter;
+
+  const where = [active()];
+
+  if (auditStatus === "audited") {
+    where.push(sql`exists (select 1 from ${audits} where ${audits.protocolId} = ${protocols.id})`);
+  } else if (auditStatus === "unaudited") {
+    where.push(sql`not exists (select 1 from ${audits} where ${audits.protocolId} = ${protocols.id})`);
+  }
+  if (category !== null && category.length > 0) {
+    where.push(sql`lower(${protocols.category}) = lower(${category})`);
+  }
+  if (chain !== null && chain.length > 0) {
+    // `chains` is a text[]; match case-insensitively against its elements.
+    where.push(
+      sql`exists (select 1 from unnest(${protocols.chains}) c where lower(c) = lower(${chain}))`,
+    );
+  }
+  if (search !== null && search.trim().length > 0) {
+    const term = `%${search.trim()}%`;
+    where.push(sql`(${protocols.name} ilike ${term} or ${protocols.slug} ilike ${term})`);
+  }
+  if (minTvlUsd !== null && minTvlUsd > 0) {
+    where.push(sql`${protocols.tvlUsd} >= ${String(minTvlUsd)}`);
+  }
+
   const rows = await db
     .select({
       protocolId: protocols.id,
@@ -276,32 +364,33 @@ export async function getSourcedProtocols(limit = 100): Promise<SourcedProtocolL
       website: protocols.website,
       githubRepo: protocols.githubRepo,
       twitter: protocols.twitter,
-      isPublished: protocols.isPublished,
-      hasBounty: protocols.hasBounty,
+      category: protocols.category,
+      chains: protocols.chains,
       tvlUsd: protocols.tvlUsd,
+      hasBounty: protocols.hasBounty,
+      isPublished: protocols.isPublished,
       auditStatus: auditStatusSql,
       auditCount: sql<number>`(
+        select count(*)::int from ${audits} where ${audits.protocolId} = ${protocols.id}
+      )`,
+      namedAuditCount: sql<number>`(
         select count(*)::int from ${audits}
-        where ${audits.protocolId} = ${protocols.id}
+        where ${audits.protocolId} = ${protocols.id} and ${audits.auditor} not like 'Unknown%'
+      )`,
+      isPinned: sql<boolean>`exists (
+        select 1 from ${deployments} where ${deployments.protocolId} = ${protocols.id}
       )`,
     })
     .from(protocols)
-    .where(
-      and(
-        active(),
-        sql`not exists (
-          select 1 from ${deployments}
-          where ${deployments.protocolId} = ${protocols.id}
-        )`,
-      ),
-    );
+    .where(and(...where));
 
-  const ranked = rows
+  const ranked: ProtocolListRow[] = rows
     .map((r) => {
       const tvlUsd = toNumber(r.tvlUsd);
       return {
         ...r,
         tvlUsd,
+        chains: r.chains ?? [],
         priorityScore: computeProtocolPriority({
           auditStatus: r.auditStatus,
           tvlUsd,
@@ -309,17 +398,39 @@ export async function getSourcedProtocols(limit = 100): Promise<SourcedProtocolL
         }),
       };
     })
-    .sort(
-      (a, b) =>
+    .sort((a, b) => {
+      if (sort === "tvl") return (b.tvlUsd ?? 0) - (a.tvlUsd ?? 0);
+      if (sort === "name") return a.name.localeCompare(b.name);
+      if (sort === "reports") return b.auditCount - a.auditCount || (b.tvlUsd ?? 0) - (a.tvlUsd ?? 0);
+      return (
         b.priorityScore - a.priorityScore ||
         (b.tvlUsd ?? 0) - (a.tvlUsd ?? 0) ||
-        a.name.localeCompare(b.name),
-    );
+        a.name.localeCompare(b.name)
+      );
+    });
+
+  // The filter controls need every option that exists, not just the ones
+  // surviving the current filter — otherwise choosing one category makes the
+  // others disappear and you cannot get back.
+  const [facets] = await db
+    .select({
+      // count(DISTINCT id), not count(*): the lateral unnest below emits one
+      // row per protocol PER CHAIN, so count(*) counts pairs (2,921) rather
+      // than protocols (915).
+      grandTotal: sql<number>`count(distinct ${protocols.id})::int`,
+      categories: sql<string[]>`array_agg(distinct ${protocols.category}) filter (where ${protocols.category} is not null)`,
+      chains: sql<string[]>`array_agg(distinct c) filter (where c is not null)`,
+    })
+    .from(sql`${protocols} left join lateral unnest(${protocols.chains}) c on true`)
+    .where(eq(protocols.archived, false));
 
   return {
-    rows: ranked.slice(0, limit),
+    rows: ranked.slice(offset, offset + limit),
     total: ranked.length,
+    grandTotal: facets?.grandTotal ?? ranked.length,
     unaudited: ranked.filter((r) => r.auditStatus === "unaudited").length,
+    categories: (facets?.categories ?? []).slice().sort((a, b) => a.localeCompare(b)),
+    chains: (facets?.chains ?? []).slice().sort((a, b) => a.localeCompare(b)),
   };
 }
 

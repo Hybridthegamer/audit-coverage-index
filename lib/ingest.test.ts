@@ -59,6 +59,8 @@ const existing = (over: Partial<ExistingProtocol> = {}): ExistingProtocol => ({
   website: "https://lido.fi/",
   twitter: "LidoFinance",
   githubRepo: "https://github.com/lidofinance",
+  category: "Liquid Staking",
+  chains: ["Ethereum"],
   defillamaId: "lido",
   tvlUsd: "23398117769.06",
   ...over,
@@ -76,6 +78,8 @@ describe("planProtocolWrite", () => {
       githubRepo: "https://github.com/lidofinance",
       defillamaId: "lido",
       tvlUsd: "23398117769.06",
+      category: "Liquid Staking",
+      chains: ["Ethereum"],
     });
   });
 
@@ -124,6 +128,8 @@ describe("planProtocolWrite", () => {
     // cannot be written, so a re-run can never republish a retracted protocol.
     const keys = Object.keys(planProtocolWrite(undefined, record()).values).sort();
     expect(keys).toEqual([
+      "category",
+      "chains",
       "defillamaId",
       "githubRepo",
       "name",

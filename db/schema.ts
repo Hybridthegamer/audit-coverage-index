@@ -136,6 +136,17 @@ export const protocols = pgTable("protocols", {
   // addresses — that is step 7), so without this there is nothing to rank
   // 1,300 imported targets by. Written only by the DefiLlama sync.
   tvlUsd: numeric("tvl_usd", { precision: 30, scale: 2 }),
+  // Added in step 8. Both come straight from the DefiLlama feed, which has
+  // carried them since step 6 — they were simply not stored, because step 6's
+  // job was curation and nothing rendered them. They are stored now because
+  // they are the two filters that actually decide whether a protocol is worth
+  // a week: a Solana program and an EVM contract are different audits, and a
+  // lending market and a DEX are different threat models.
+  category: text("category"),
+  // DefiLlama's own chain names ("Ethereum", "BNB"), NOT our chain enum — a
+  // protocol lists chains the enum has never heard of, and this column is for
+  // filtering a research list, not for keying a deployment.
+  chains: text("chains").array(),
   securityContact: text("security_contact"),
   hasBounty: boolean("has_bounty").notNull().default(false),
   bountyPlatform: bountyPlatformEnum("bounty_platform").notNull().default("none"),

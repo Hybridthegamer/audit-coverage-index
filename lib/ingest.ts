@@ -251,6 +251,10 @@ export interface ProtocolSourceValues {
   defillamaId: string;
   /** Postgres numeric — carried as a string so no precision is invented. */
   tvlUsd: string | null;
+  /** DefiLlama's category, e.g. "Lending". Step 8. */
+  category: string | null;
+  /** DefiLlama's chain names, not our chain enum. Step 8. */
+  chains: string[] | null;
 }
 
 /** The subset of an existing row the plan needs in order to diff. */
@@ -263,6 +267,8 @@ export interface ExistingProtocol {
   githubRepo: string | null;
   defillamaId: string | null;
   tvlUsd: string | null;
+  category: string | null;
+  chains: string[] | null;
 }
 
 export type ProtocolWriteAction = "insert" | "update" | "unchanged";
@@ -306,6 +312,8 @@ export function planProtocolWrite(
         githubRepo: record.githubRepo,
         defillamaId: record.defillamaId,
         tvlUsd,
+        category: record.category,
+        chains: record.chains.length > 0 ? record.chains : null,
       },
     };
   }
@@ -318,6 +326,10 @@ export function planProtocolWrite(
     githubRepo: existing.githubRepo ?? record.githubRepo,
     defillamaId: record.defillamaId,
     tvlUsd,
+    // Same fill-don't-blank rule as website/twitter: a feed that drops the
+    // category must not erase one we already hold.
+    category: record.category ?? existing.category,
+    chains: record.chains.length > 0 ? record.chains : existing.chains,
   };
 
   const moved =
@@ -326,7 +338,9 @@ export function planProtocolWrite(
     values.twitter !== existing.twitter ||
     values.githubRepo !== existing.githubRepo ||
     values.defillamaId !== existing.defillamaId ||
-    values.tvlUsd !== existing.tvlUsd;
+    values.tvlUsd !== existing.tvlUsd ||
+    values.category !== existing.category ||
+    (values.chains ?? []).join(",") !== (existing.chains ?? []).join(",");
 
   return { action: moved ? "update" : "unchanged", values };
 }
@@ -448,6 +462,8 @@ export async function syncFromDefiLlama(
       githubRepo: schema.protocols.githubRepo,
       defillamaId: schema.protocols.defillamaId,
       tvlUsd: schema.protocols.tvlUsd,
+      category: schema.protocols.category,
+      chains: schema.protocols.chains,
     })
     .from(schema.protocols);
 
@@ -480,6 +496,8 @@ export async function syncFromDefiLlama(
           githubRepo: sql`excluded.github_repo`,
           defillamaId: sql`excluded.defillama_id`,
           tvlUsd: sql`excluded.tvl_usd`,
+          category: sql`excluded.category`,
+          chains: sql`excluded.chains`,
         },
       });
   }
