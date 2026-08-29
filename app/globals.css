@@ -735,6 +735,17 @@ select.bam-input {
   padding-right:       2.5rem;
 }
 
+/* The closed <select> picks up .bam-input's dark background, but its open
+   option list is a browser/OS popup that ignores the parent's background —
+   left unstyled it renders on the UA default (white), and cream-on-white is
+   unreadable until the native blue selection highlight forces a legible
+   color. Setting background+color directly on <option> is honored by every
+   evergreen engine even though the rest of option styling is not. */
+select.bam-input option {
+  background: var(--bam-surface-2);
+  color:      var(--bam-cream-80);
+}
+
 /* Two-up field grid; collapses on narrow viewports. */
 .bam-form-grid {
   display:               grid;
